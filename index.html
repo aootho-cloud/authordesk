@@ -520,6 +520,7 @@
     font-size:12.5px;
   }
   .stock-summary-line .item-name{ color:var(--ink-soft); font-weight:600; }
+  .stock-summary-line .stock-total{ color:var(--muted); font-weight:500; }
   .stock-summary-line .counts{ color:var(--muted); white-space:nowrap; }
   .stock-summary-line .counts b{ color:var(--ink); font-weight:700; }
   .stock-summary-line .counts .available-low{ color:var(--error); }
@@ -547,6 +548,11 @@
     background:var(--ink);
     border-color:var(--ink);
     color:#FBF6EC;
+  }
+  .status-filter-chip .chip-count{
+    opacity:0.65;
+    font-weight:600;
+    margin-left:3px;
   }
 
   /* ---------- Alert banner ---------- */
@@ -1325,10 +1331,10 @@
   <!-- ================= ORDERS ================= -->
   <section class="tab-panel" id="panel-orders">
     <div class="status-filter-row" id="orderStatusFilterRow">
-      <div class="status-filter-chip active" data-value="all">All</div>
-      <div class="status-filter-chip" data-value="pending">Pending</div>
-      <div class="status-filter-chip" data-value="sent">Sent</div>
-      <div class="status-filter-chip" data-value="received">Received</div>
+      <div class="status-filter-chip active" data-value="all">All<span class="chip-count" id="chipCountAll"></span></div>
+      <div class="status-filter-chip" data-value="pending">Pending<span class="chip-count" id="chipCountPending"></span></div>
+      <div class="status-filter-chip" data-value="sent">Sent<span class="chip-count" id="chipCountSent"></span></div>
+      <div class="status-filter-chip" data-value="received">Received<span class="chip-count" id="chipCountReceived"></span></div>
     </div>
 
     <div class="search-row">
@@ -2178,8 +2184,11 @@ const db = getFirestore(firebaseApp);
     el.style.display = "flex";
     el.innerHTML = data.items.map(item => {
       const booked = bookedCountForItem(item.id);
-      const available = Number(item.stock || 0) - booked;
-      const nameLabel = data.items.length > 1 ? `<span class="item-name">${escapeHtml(item.name)}</span>` : `<span class="item-name">In stock</span>`;
+      const stock = Number(item.stock || 0);
+      const available = stock - booked;
+      const nameLabel = data.items.length > 1
+        ? `<span class="item-name">${escapeHtml(item.name)} <span class="stock-total">(${stock} in stock)</span></span>`
+        : `<span class="item-name">In stock <span class="stock-total">(${stock})</span></span>`;
       return `
         <div class="stock-summary-line">
           ${nameLabel}
@@ -2189,9 +2198,23 @@ const db = getFirestore(firebaseApp);
     }).join("");
   }
 
+  function updateStatusFilterCounts(){
+    const counts = { pending: 0, sent: 0, received: 0 };
+    data.orders.forEach(o => {
+      const s = o.status || "pending";
+      if (counts[s] !== undefined) counts[s]++;
+    });
+    const all = data.orders.length;
+    document.getElementById("chipCountAll").textContent = `(${all})`;
+    document.getElementById("chipCountPending").textContent = `(${counts.pending})`;
+    document.getElementById("chipCountSent").textContent = `(${counts.sent})`;
+    document.getElementById("chipCountReceived").textContent = `(${counts.received})`;
+  }
+
   function renderOrders(){
     const list = document.getElementById("ordersList");
     renderStockSummary();
+    updateStatusFilterCounts();
 
     if (data.orders.length === 0){
       list.innerHTML = `<div class="empty-state">
