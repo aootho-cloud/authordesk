@@ -13,6 +13,7 @@
 
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%23FAF6EE%22/%3E%3Cpath%20d%3D%22M9%2012H23L21.8%2026.2C21.7%2027.3%2020.8%2028%2019.8%2028H12.2C11.2%2028%2010.3%2027.3%2010.2%2026.2L9%2012Z%22%20fill%3D%22%238A6D3B%22/%3E%3Cpath%20d%3D%22M12.5%2012V9.5C12.5%206.8%2014.2%204.5%2016%204.5C17.8%204.5%2019.5%206.8%2019.5%209.5V12%22%20stroke%3D%22%238A6D3B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E" />
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%23FAF6EE%22/%3E%3Cpath%20d%3D%22M9%2012H23L21.8%2026.2C21.7%2027.3%2020.8%2028%2019.8%2028H12.2C11.2%2028%2010.3%2027.3%2010.2%2026.2L9%2012Z%22%20fill%3D%22%238A6D3B%22/%3E%3Cpath%20d%3D%22M12.5%2012V9.5C12.5%206.8%2014.2%204.5%2016%204.5C17.8%204.5%2019.5%206.8%2019.5%209.5V12%22%20stroke%3D%22%238A6D3B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E" />
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22AuthorDesk%22%2C%22short_name%22%3A%22AuthorDesk%22%2C%22start_url%22%3A%22.%22%2C%22scope%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23FAF6EE%22%2C%22theme_color%22%3A%22%2322304A%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage/svg%2Bxml%2C%253Csvg%2520xmlns%253D%2522http%253A//www.w3.org/2000/svg%2522%2520viewBox%253D%25220%25200%252032%252032%2522%253E%253Crect%2520width%253D%252232%2522%2520height%253D%252232%2522%2520rx%253D%25228%2522%2520fill%253D%2522%2523FAF6EE%2522/%253E%253Cpath%2520d%253D%2522M9%252012H23L21.8%252026.2C21.7%252027.3%252020.8%252028%252019.8%252028H12.2C11.2%252028%252010.3%252027.3%252010.2%252026.2L9%252012Z%2522%2520fill%253D%2522%25238A6D3B%2522/%253E%253Cpath%2520d%253D%2522M12.5%252012V9.5C12.5%25206.8%252014.2%25204.5%252016%25204.5C17.8%25204.5%252019.5%25206.8%252019.5%25209.5V12%2522%2520stroke%253D%2522%25238A6D3B%2522%2520stroke-width%253D%25222%2522%2520fill%253D%2522none%2522%2520stroke-linecap%253D%2522round%2522/%253E%253C/svg%253E%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image/svg%2Bxml%22%2C%22purpose%22%3A%22any%22%7D%5D%7D" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2711,6 +2712,27 @@ const db = getFirestore(firebaseApp);
   renderOrders();
   renderStock();
 })();
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      const swSource = `
+        self.addEventListener("install", () => self.skipWaiting());
+        self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+        self.addEventListener("fetch", (event) => {
+          event.respondWith(
+            fetch(event.request).catch(() => caches.match(event.request))
+          );
+        });
+      `;
+      const swBlob = new Blob([swSource], { type: "application/javascript" });
+      const swUrl = URL.createObjectURL(swBlob);
+      navigator.serviceWorker.register(swUrl, { scope: "./" }).catch((err) => {
+        console.warn("Service worker registration failed:", err);
+      });
+    });
+  }
 </script>
 
 </body>
