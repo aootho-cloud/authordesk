@@ -11,6 +11,9 @@
 <meta name="theme-color" content="#22304A" />
 <meta name="mobile-web-app-capable" content="yes" />
 
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%23FAF6EE%22/%3E%3Cpath%20d%3D%22M9%2012H23L21.8%2026.2C21.7%2027.3%2020.8%2028%2019.8%2028H12.2C11.2%2028%2010.3%2027.3%2010.2%2026.2L9%2012Z%22%20fill%3D%22%238A6D3B%22/%3E%3Cpath%20d%3D%22M12.5%2012V9.5C12.5%206.8%2014.2%204.5%2016%204.5C17.8%204.5%2019.5%206.8%2019.5%209.5V12%22%20stroke%3D%22%238A6D3B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%23FAF6EE%22/%3E%3Cpath%20d%3D%22M9%2012H23L21.8%2026.2C21.7%2027.3%2020.8%2028%2019.8%2028H12.2C11.2%2028%2010.3%2027.3%2010.2%2026.2L9%2012Z%22%20fill%3D%22%238A6D3B%22/%3E%3Cpath%20d%3D%22M12.5%2012V9.5C12.5%206.8%2014.2%204.5%2016%204.5C17.8%204.5%2019.5%206.8%2019.5%209.5V12%22%20stroke%3D%22%238A6D3B%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -441,6 +444,43 @@
   }
   .clear-search:hover{ color:var(--ink); }
 
+  .select-toggle-btn{
+    flex:0 0 40px;
+    width:40px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--paper-panel);
+    border:1px solid var(--rule);
+    border-radius:10px;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .select-toggle-btn:hover{ background:var(--brass-tint); }
+  .select-toggle-btn.active{ background:var(--ink); border-color:var(--ink); color:#FBF6EC; }
+
+  .order-tile.selectable{ display:flex; flex-direction:column; }
+
+  .selection-bar{
+    display:none;
+    position:sticky;
+    bottom:0;
+    left:0;
+    right:0;
+    margin:10px -16px -8px;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:var(--paper-panel);
+    border-top:1px solid var(--rule);
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    box-shadow:0 -6px 16px -10px rgba(31,42,60,0.2);
+  }
+  .selection-bar.show{ display:flex; }
+  .selection-bar span{ font-size:13px; font-weight:600; color:var(--ink-soft); white-space:nowrap; }
+  .selection-bar-actions{ display:flex; gap:8px; }
+  .selection-bar-actions .btn{ flex:0 0 auto; padding:9px 14px; font-size:12.5px; }
+
   .status-filter-row{
     display:flex;
     gap:8px;
@@ -500,6 +540,16 @@
     gap:10px;
   }
 
+  .tile-select-box{
+    flex:0 0 auto;
+    padding-top:2px;
+  }
+  .tile-select-box input{
+    width:18px;
+    height:18px;
+    accent-color:var(--brass);
+  }
+
   .order-name{
     font-family:'Lora', serif;
     font-weight:600;
@@ -525,18 +575,49 @@
     -webkit-box-orient:vertical;
   }
 
+  .tile-tag-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:9px;
+  }
+
   .badge{
     display:inline-block;
     font-size:11px;
     font-weight:600;
     padding:3px 9px;
     border-radius:100px;
-    margin-top:9px;
   }
   .badge.free{ background:var(--good-tint); color:var(--good); }
   .badge.full{ background:var(--brass-tint); color:var(--brass-dark); }
   .badge.discount{ background:#EAF0F7; color:#3A5A82; }
   .badge.custom{ background:#F1EEF5; color:#6B5A8A; }
+  .badge.hand-delivery{ background:#EAF0F7; color:#3A5A82; }
+
+  .insta-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    margin-top:8px;
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--brass-dark);
+    text-decoration:none;
+  }
+  .insta-chip:hover{ text-decoration:underline; }
+
+  .order-notes-preview{
+    font-size:12px;
+    color:var(--ink-soft);
+    font-style:italic;
+    margin-top:7px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+  }
 
   /* ---------- Status ---------- */
   .status-row{
@@ -810,6 +891,23 @@
   }
   .field-hint{ font-size:11.5px; color:var(--muted); margin-top:5px; }
 
+  .checkbox-row{
+    display:flex;
+    align-items:flex-start;
+    gap:9px;
+    font-size:13.5px;
+    color:var(--ink-soft);
+    cursor:pointer;
+    font-weight:500;
+  }
+  .checkbox-row input[type="checkbox"]{
+    margin-top:2px;
+    width:16px;
+    height:16px;
+    accent-color:var(--brass);
+    flex:0 0 auto;
+  }
+
   .row-2{ display:flex; gap:12px; }
   .row-2 .field{ flex:1; }
 
@@ -923,6 +1021,55 @@
     .sheet{ animation:none; }
     .toast{ transition:none; }
   }
+
+  /* ---------- Shipping label printing ---------- */
+  #printArea{ display:none; }
+
+  @media print{
+    body > *:not(#printArea){ display:none !important; }
+    body{
+      background:#fff;
+      height:auto;
+      min-height:0;
+      overflow:visible;
+      display:block;
+      padding:0;
+    }
+    #printArea{ display:block !important; }
+    .print-label-grid{
+      display:grid;
+      grid-template-columns:repeat(2, 1fr);
+      gap:10mm;
+      padding:10mm;
+    }
+    .print-label{
+      border:1.5px dashed #999;
+      border-radius:3mm;
+      padding:7mm;
+      break-inside:avoid;
+      page-break-inside:avoid;
+      font-family:'Inter', system-ui, sans-serif;
+      color:#111;
+    }
+    .print-label .label-tag{
+      font-size:8pt;
+      font-weight:700;
+      letter-spacing:0.06em;
+      text-transform:uppercase;
+      color:#777;
+      margin-bottom:2mm;
+    }
+    .print-label .label-block{
+      font-size:11pt;
+      line-height:1.45;
+      white-space:pre-line;
+    }
+    .print-label .divider{
+      border:none;
+      border-top:1px solid #ccc;
+      margin:5mm 0;
+    }
+  }
 </style>
 </head>
 <body>
@@ -933,8 +1080,8 @@
 <div class="boot-loading" id="bootLoading">
   <div class="boot-mark">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M4 20.5V5.2C4 4.1 4.9 3.5 5.9 3.8L12 6L18.1 3.8C19.1 3.5 20 4.1 20 5.2V18.5C20 19.3 19.5 19.9 18.8 20.1L12 22L5.2 20.1C4.5 19.9 4 19.3 4 18.5V20.5Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
-      <path d="M12 6V22" stroke="#8A6D3B" stroke-width="1.4"/>
+      <path d="M6.5 8.2H17.5L16.6 20.2C16.53 21.16 15.73 21.9 14.77 21.9H9.23C8.27 21.9 7.47 21.16 7.4 20.2L6.5 8.2Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M9 8.2V6.3C9 4.4 10.34 2.9 12 2.9C13.66 2.9 15 4.4 15 6.3V8.2" stroke="#8A6D3B" stroke-width="1.4" stroke-linecap="round"/>
     </svg>
   </div>
   <div class="boot-spinner"></div>
@@ -948,8 +1095,8 @@
     <div class="auth-brand">
       <span class="auth-mark">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M4 20.5V5.2C4 4.1 4.9 3.5 5.9 3.8L12 6L18.1 3.8C19.1 3.5 20 4.1 20 5.2V18.5C20 19.3 19.5 19.9 18.8 20.1L12 22L5.2 20.1C4.5 19.9 4 19.3 4 18.5V20.5Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M12 6V22" stroke="#8A6D3B" stroke-width="1.4"/>
+          <path d="M6.5 8.2H17.5L16.6 20.2C16.53 21.16 15.73 21.9 14.77 21.9H9.23C8.27 21.9 7.47 21.16 7.4 20.2L6.5 8.2Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M9 8.2V6.3C9 4.4 10.34 2.9 12 2.9C13.66 2.9 15 4.4 15 6.3V8.2" stroke="#8A6D3B" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         AuthorDesk
       </span>
@@ -989,8 +1136,8 @@
     <div class="auth-brand">
       <span class="auth-mark">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M4 20.5V5.2C4 4.1 4.9 3.5 5.9 3.8L12 6L18.1 3.8C19.1 3.5 20 4.1 20 5.2V18.5C20 19.3 19.5 19.9 18.8 20.1L12 22L5.2 20.1C4.5 19.9 4 19.3 4 18.5V20.5Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M12 6V22" stroke="#8A6D3B" stroke-width="1.4"/>
+          <path d="M6.5 8.2H17.5L16.6 20.2C16.53 21.16 15.73 21.9 14.77 21.9H9.23C8.27 21.9 7.47 21.16 7.4 20.2L6.5 8.2Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M9 8.2V6.3C9 4.4 10.34 2.9 12 2.9C13.66 2.9 15 4.4 15 6.3V8.2" stroke="#8A6D3B" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         AuthorDesk
       </span>
@@ -1038,8 +1185,8 @@
     <div class="auth-brand">
       <span class="auth-mark">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M4 20.5V5.2C4 4.1 4.9 3.5 5.9 3.8L12 6L18.1 3.8C19.1 3.5 20 4.1 20 5.2V18.5C20 19.3 19.5 19.9 18.8 20.1L12 22L5.2 20.1C4.5 19.9 4 19.3 4 18.5V20.5Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M12 6V22" stroke="#8A6D3B" stroke-width="1.4"/>
+          <path d="M6.5 8.2H17.5L16.6 20.2C16.53 21.16 15.73 21.9 14.77 21.9H9.23C8.27 21.9 7.47 21.16 7.4 20.2L6.5 8.2Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M9 8.2V6.3C9 4.4 10.34 2.9 12 2.9C13.66 2.9 15 4.4 15 6.3V8.2" stroke="#8A6D3B" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         AuthorDesk
       </span>
@@ -1075,8 +1222,8 @@
     <div class="topbar-left">
       <div class="app-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M4 20.5V5.2C4 4.1 4.9 3.5 5.9 3.8L12 6L18.1 3.8C19.1 3.5 20 4.1 20 5.2V18.5C20 19.3 19.5 19.9 18.8 20.1L12 22L5.2 20.1C4.5 19.9 4 19.3 4 18.5V20.5Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M12 6V22" stroke="#8A6D3B" stroke-width="1.4"/>
+          <path d="M6.5 8.2H17.5L16.6 20.2C16.53 21.16 15.73 21.9 14.77 21.9H9.23C8.27 21.9 7.47 21.16 7.4 20.2L6.5 8.2Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M9 8.2V6.3C9 4.4 10.34 2.9 12 2.9C13.66 2.9 15 4.4 15 6.3V8.2" stroke="#8A6D3B" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         AuthorDesk
       </div>
@@ -1144,9 +1291,20 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
+      <button class="select-toggle-btn" id="btnToggleSelect" aria-label="Select orders for label printing">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12.5 11 14.5 15.5 9.5"/><rect x="4" y="4" width="16" height="16" rx="4"/></svg>
+      </button>
     </div>
 
     <div id="ordersList"></div>
+
+    <div class="selection-bar" id="selectionBar">
+      <span id="selectionCount">0 selected</span>
+      <div class="selection-bar-actions">
+        <button type="button" class="btn ghost" id="btnSelectAll">Select all</button>
+        <button type="button" class="btn primary" id="btnPrintSelected">Print labels</button>
+      </div>
+    </div>
   </section>
 
   <!-- ================= STOCK ================= -->
@@ -1198,6 +1356,9 @@
 
 </div><!-- /.phone-frame -->
 
+<div id="printArea"></div>
+
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
@@ -1208,6 +1369,12 @@ import {
   sendPasswordResetEmail,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 // TODO: replace with your AuthorDesk Firebase project config
 // (Firebase console → Project settings → General → Your apps → SDK setup)
@@ -1222,13 +1389,62 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
 (function(){
   "use strict";
 
   const LOW_STOCK_THRESHOLD = 5;
 
-  // ---------- Storage ----------
+  // ---------- Storage (localStorage cache + Firestore sync) ----------
+  let currentUid = null;
+  let firestoreSaveTimer = null;
+  let firestoreSyncSeq = 0;
+
+  function cacheLocally(d){
+    try{ localStorage.setItem("authordesk_data", JSON.stringify(d)); }catch(e){}
+  }
+
+  function queueFirestoreSave(){
+    if (!currentUid) return;
+    clearTimeout(firestoreSaveTimer);
+    firestoreSaveTimer = setTimeout(async () => {
+      const uidAtQueue = currentUid;
+      try{
+        await setDoc(doc(db, "users", uidAtQueue), data);
+      } catch(err){
+        showToast("Couldn't sync to the cloud: " + err.message);
+      }
+    }, 500);
+  }
+
+  async function syncFromFirestore(uidForSync){
+    const mySeq = ++firestoreSyncSeq;
+    try{
+      const snap = await getDoc(doc(db, "users", uidForSync));
+      if (mySeq !== firestoreSyncSeq || currentUid !== uidForSync) return; // a newer login/logout happened meanwhile
+      if (snap.exists()){
+        const remote = snap.data() || {};
+        data = {
+          items: Array.isArray(remote.items) ? remote.items : [],
+          orders: Array.isArray(remote.orders) ? remote.orders : [],
+          profile: Object.assign({ name: "", photo: null, fromAddress: "", email: "" }, remote.profile || {})
+        };
+        data.profile.email = auth.currentUser ? auth.currentUser.email : data.profile.email;
+        cacheLocally(data);
+        updateHeaderAvatar();
+        renderDashboard();
+        renderOrders();
+        renderStock();
+      } else {
+        // brand-new account: push whatever we have locally as the starting document
+        await setDoc(doc(db, "users", uidForSync), data);
+      }
+    } catch(err){
+      showToast("Couldn't load your data from the cloud: " + err.message);
+    }
+  }
+
   const store = {
     load(){
       try{
@@ -1237,19 +1453,20 @@ const auth = getAuth(firebaseApp);
       }catch(e){}
       return { items: [], orders: [] };
     },
-    save(data){
-      localStorage.setItem("authordesk_data", JSON.stringify(data));
+    save(d){
+      cacheLocally(d);
+      queueFirestoreSave();
     }
   };
 
   let data = store.load();
-  if (!data.profile) data.profile = { name: "", photo: null };
+  if (!data.profile) data.profile = { name: "", photo: null, fromAddress: "" };
 
   // seed one example item on first run so the app isn't empty/confusing
   if (data.items.length === 0 && data.orders.length === 0 && !localStorage.getItem("authordesk_seeded")){
     data.items.push({ id: uid(), name: "Treesa", mrp: 170, deliveryCharge: 40, stock: 12 });
     localStorage.setItem("authordesk_seeded", "1");
-    store.save(data);
+    cacheLocally(data);
   }
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -1290,6 +1507,11 @@ const auth = getAuth(firebaseApp);
         <div class="field">
           <label for="profileName">Your name</label>
           <input type="text" id="profileName" placeholder="e.g. Alisha Unni Thomas" value="${escapeHtml(data.profile.name || "")}">
+        </div>
+
+        <div class="field">
+          <label for="profileFromAddress">From address (for shipping labels)</label>
+          <textarea id="profileFromAddress" placeholder="Alisha Unni Thomas&#10;12 MG Road, Kochi&#10;Kerala 682001&#10;+91 98765 43210">${escapeHtml(data.profile.fromAddress || "")}</textarea>
         </div>
 
         <div class="account-email-row">
@@ -1455,6 +1677,7 @@ const auth = getAuth(firebaseApp);
     document.getElementById("saveProfileBtn").addEventListener("click", () => {
       try{
         data.profile.name = document.getElementById("profileName").value.trim();
+        data.profile.fromAddress = document.getElementById("profileFromAddress").value.trim();
         if (draftPhoto) data.profile.photo = draftPhoto;
         store.save(data);
         updateHeaderAvatar();
@@ -1465,15 +1688,6 @@ const auth = getAuth(firebaseApp);
       }
     });
   }
-
-  document.getElementById("profileBtn").addEventListener("click", () => {
-    try{
-      openSheet(profileSheetHtml());
-      bindProfileSheet();
-    } catch(err){
-      showToast("Couldn't open profile: " + err.message);
-    }
-  });
 
   // ---------- Tabs ----------
   document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -1576,6 +1790,20 @@ const auth = getAuth(firebaseApp);
           <div class="field-hint">First line is used as the customer/order name shown on the tile.</div>
         </div>
 
+        <div class="row-2">
+          <div class="field">
+            <label for="orderInstagram">Instagram handle (optional)</label>
+            <input type="text" id="orderInstagram" placeholder="@username" value="${order ? escapeHtml(order.instagramHandle || "") : ""}">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="checkbox-row" for="orderHandDelivery">
+            <input type="checkbox" id="orderHandDelivery" ${order && order.handDelivery ? "checked" : ""}>
+            <span>Hand delivery — given directly, no shipping needed</span>
+          </label>
+        </div>
+
         <div class="field">
           <label>Status</label>
           <div class="status-row" id="statusRow">
@@ -1592,6 +1820,11 @@ const auth = getAuth(firebaseApp);
             <label for="orderDelivery">Delivery charged (₹)</label>
             <input type="number" id="orderDelivery" min="0" step="1" value="${order ? order.delivery : "0"}">
           </div>
+        </div>
+
+        <div class="field">
+          <label for="orderNotes">Notes (optional)</label>
+          <textarea id="orderNotes" placeholder="e.g. wants gift wrap, asked for signed copy…">${order ? escapeHtml(order.notes || "") : ""}</textarea>
         </div>
 
         <div id="categoryPreview" class="category-preview">—</div>
@@ -1655,6 +1888,9 @@ const auth = getAuth(firebaseApp);
           id: order ? order.id : uid(),
           itemId: itemEl.value || (data.items[0] ? data.items[0].id : null),
           address,
+          instagramHandle: document.getElementById("orderInstagram").value.trim().replace(/^@/, ""),
+          handDelivery: document.getElementById("orderHandDelivery").checked,
+          notes: document.getElementById("orderNotes").value.trim(),
           price: Number(priceEl.value) || 0,
           delivery: Number(deliveryEl.value) || 0,
           status: selectedStatus,
@@ -1739,11 +1975,92 @@ const auth = getAuth(firebaseApp);
   // ---------- Order search / filter state ----------
   const orderFilters = { search: "", status: "all" };
 
+  // ---------- Selection mode (for bulk label printing) ----------
+  let selectionMode = false;
+  const selectedOrderIds = new Set();
+
+  function updateSelectionBar(){
+    const bar = document.getElementById("selectionBar");
+    bar.classList.toggle("show", selectionMode);
+    document.getElementById("selectionCount").textContent = `${selectedOrderIds.size} selected`;
+  }
+
+  document.getElementById("btnToggleSelect").addEventListener("click", () => {
+    selectionMode = !selectionMode;
+    document.getElementById("btnToggleSelect").classList.toggle("active", selectionMode);
+    if (!selectionMode) selectedOrderIds.clear();
+    updateSelectionBar();
+    renderOrders();
+  });
+
+  document.getElementById("btnSelectAll").addEventListener("click", () => {
+    const visible = getFilteredSortedOrders().filter(o => !o.handDelivery);
+    const allSelected = visible.length > 0 && visible.every(o => selectedOrderIds.has(o.id));
+    if (allSelected){
+      visible.forEach(o => selectedOrderIds.delete(o.id));
+    } else {
+      visible.forEach(o => selectedOrderIds.add(o.id));
+    }
+    updateSelectionBar();
+    renderOrders();
+  });
+
+  document.getElementById("btnPrintSelected").addEventListener("click", () => {
+    const selected = data.orders.filter(o => selectedOrderIds.has(o.id));
+    if (selected.length === 0){
+      showToast("Select at least one order first.");
+      return;
+    }
+    printLabelsForOrders(selected);
+  });
+
+  // ---------- Shipping labels ----------
+  function buildLabelHtml(order){
+    const from = (data.profile.fromAddress || "").trim();
+    const to = (order.address || "").trim();
+    return `
+      <div class="print-label">
+        <div class="label-tag">From</div>
+        <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
+        <hr class="divider">
+        <div class="label-tag">To</div>
+        <div class="label-block">${escapeHtml(to)}</div>
+      </div>
+    `;
+  }
+
+  function printLabelsForOrders(orders){
+    if (!data.profile.fromAddress){
+      showToast("Add your From address in My Account before printing labels.");
+      return;
+    }
+    const html = orders.map(buildLabelHtml).join("");
+    document.getElementById("printArea").innerHTML = `<div class="print-label-grid">${html}</div>`;
+    window.print();
+  }
+
+
+  function orderSearchHaystack(order){
+    const item = data.items.find(i => i.id === order.itemId);
+    const cat = categorize(item, order.price, order.delivery);
+    return [
+      order.address,
+      order.notes,
+      order.instagramHandle,
+      item ? item.name : "",
+      statusLabel(order.status || "pending"),
+      cat.label,
+      order.handDelivery ? "hand delivery" : "",
+      order.price,
+      order.delivery
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
   function getFilteredSortedOrders(){
     const q = orderFilters.search.trim().toLowerCase();
     let list = data.orders.filter(order => {
       if (orderFilters.status !== "all" && (order.status || "pending") !== orderFilters.status) return false;
-      if (q && !order.address.toLowerCase().includes(q)) return false;
+      if (q && !orderSearchHaystack(order).includes(q)) return false;
       return true;
     });
 
@@ -1780,13 +2097,28 @@ const auth = getAuth(firebaseApp);
       const rest = lines.slice(1).join(", ");
       const total = Number(order.price) + Number(order.delivery);
       const status = order.status || "pending";
+      const isChecked = selectedOrderIds.has(order.id);
       return `
-        <div class="order-tile" data-id="${order.id}">
+        <div class="order-tile ${selectionMode ? "selectable" : ""}" data-id="${order.id}">
           <div class="order-tile-top">
-            <div>
+            ${selectionMode ? (
+              order.handDelivery
+                ? `<div class="tile-select-box"></div>`
+                : `<label class="tile-select-box"><input type="checkbox" class="order-select-checkbox" ${isChecked ? "checked" : ""}></label>`
+            ) : ""}
+            <div style="flex:1;min-width:0;">
               <div class="order-name">${escapeHtml(name)}</div>
               ${rest ? `<div class="order-address-preview">${escapeHtml(rest)}</div>` : ""}
-              <span class="badge ${cat.cls}">${cat.label}</span>
+              <div class="tile-tag-row">
+                <span class="badge ${cat.cls}">${cat.label}</span>
+                ${order.handDelivery ? `<span class="badge hand-delivery">Hand delivery</span>` : ""}
+              </div>
+              ${order.instagramHandle ? `
+              <a class="insta-chip" href="https://instagram.com/${encodeURIComponent(order.instagramHandle)}" target="_blank" rel="noopener">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
+                @${escapeHtml(order.instagramHandle)}
+              </a>` : ""}
+              ${order.notes ? `<div class="order-notes-preview">${escapeHtml(order.notes)}</div>` : ""}
             </div>
             <div class="order-amount">${rupee(total)}</div>
           </div>
@@ -1801,6 +2133,10 @@ const auth = getAuth(firebaseApp);
           <div class="tile-footer">
             <div style="font-size:11.5px;color:var(--muted);">${item ? escapeHtml(item.name) : "—"}</div>
             <div class="tile-actions">
+              ${!order.handDelivery ? `
+              <button class="icon-btn print-order" aria-label="Print shipping label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z"/></svg>
+              </button>` : ""}
               <button class="icon-btn edit-order" aria-label="Edit order">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>
               </button>
@@ -1808,6 +2144,25 @@ const auth = getAuth(firebaseApp);
           </div>
         </div>`;
     }).join("");
+
+    list.querySelectorAll(".order-select-checkbox").forEach(box => {
+      box.addEventListener("click", (e) => e.stopPropagation());
+      box.addEventListener("change", () => {
+        const id = box.closest(".order-tile").dataset.id;
+        if (box.checked) selectedOrderIds.add(id);
+        else selectedOrderIds.delete(id);
+        updateSelectionBar();
+      });
+    });
+
+    list.querySelectorAll(".print-order").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.closest(".order-tile").dataset.id;
+        const order = data.orders.find(o => o.id === id);
+        if (order) printLabelsForOrders([order]);
+      });
+    });
 
     list.querySelectorAll(".status-badge").forEach(badge => {
       badge.addEventListener("click", (e) => {
@@ -2311,12 +2666,15 @@ const auth = getAuth(firebaseApp);
     document.getElementById("authScreens").classList.remove("show");
     document.getElementById("appRoot").style.display = "flex";
 
+    currentUid = user.uid;
     data.profile.email = user.email || "";
-    store.save(data);
     updateHeaderAvatar();
     renderDashboard();
     renderOrders();
     renderStock();
+
+    // show cached/local data instantly, then reconcile with the cloud copy
+    syncFromFirestore(user.uid);
   }
 
   function showAuthUI(){
@@ -2324,6 +2682,9 @@ const auth = getAuth(firebaseApp);
     document.getElementById("appRoot").style.display = "none";
     document.getElementById("authScreens").classList.add("show");
     showAuthView("login");
+
+    currentUid = null;
+    clearTimeout(firestoreSaveTimer);
 
     // clear any typed-in fields/errors from a previous session
     ["loginEmail","loginPassword","signupEmail","signupPassword","signupConfirmPassword","forgotEmail"].forEach(id => {
