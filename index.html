@@ -324,6 +324,27 @@
   .account-email-row .email-label{ font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:2px; }
   .account-email-row .email-value{ font-size:14px; color:var(--ink); }
 
+  .detail-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:14px;
+  }
+  .detail-section{ margin-bottom:18px; }
+  .detail-label{
+    font-size:12px;
+    font-weight:600;
+    color:var(--muted);
+    margin-bottom:5px;
+  }
+  .detail-text{
+    font-size:14px;
+    color:var(--ink);
+    white-space:pre-line;
+    line-height:1.55;
+  }
+
   main{
     flex:1 1 auto;
     overflow-y:auto;
@@ -361,6 +382,7 @@
     color:var(--ink);
   }
   .stat-value.brass{ color:var(--brass-dark); }
+  .stat-value.negative{ color:var(--error) !important; }
   .stat-sub{ font-size:12px; color:var(--muted); margin-top:4px; }
 
   .breakdown-row{
@@ -480,6 +502,27 @@
   .selection-bar span{ font-size:13px; font-weight:600; color:var(--ink-soft); white-space:nowrap; }
   .selection-bar-actions{ display:flex; gap:8px; }
   .selection-bar-actions .btn{ flex:0 0 auto; padding:9px 14px; font-size:12.5px; }
+
+  .stock-summary{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    margin-bottom:14px;
+    padding:10px 13px;
+    background:var(--paper-panel);
+    border:1px solid var(--rule);
+    border-radius:10px;
+  }
+  .stock-summary-line{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:12.5px;
+  }
+  .stock-summary-line .item-name{ color:var(--ink-soft); font-weight:600; }
+  .stock-summary-line .counts{ color:var(--muted); white-space:nowrap; }
+  .stock-summary-line .counts b{ color:var(--ink); font-weight:700; }
+  .stock-summary-line .counts .available-low{ color:var(--error); }
 
   .status-filter-row{
     display:flex;
@@ -1037,19 +1080,27 @@
     }
     #printArea{ display:block !important; }
     .print-label-grid{
-      display:grid;
-      grid-template-columns:repeat(2, 1fr);
-      gap:10mm;
+      display:flex;
+      flex-direction:column;
+      gap:8mm;
       padding:10mm;
     }
     .print-label{
-      border:1.5px dashed #999;
-      border-radius:3mm;
-      padding:7mm;
+      display:flex;
+      border:1.5px solid #333;
+      border-radius:2mm;
       break-inside:avoid;
       page-break-inside:avoid;
       font-family:'Inter', system-ui, sans-serif;
       color:#111;
+      min-height:32mm;
+    }
+    .print-label .label-side{
+      flex:1 1 50%;
+      padding:6mm;
+    }
+    .print-label .label-side.from-side{
+      border-right:1.5px solid #333;
     }
     .print-label .label-tag{
       font-size:8pt;
@@ -1063,11 +1114,6 @@
       font-size:11pt;
       line-height:1.45;
       white-space:pre-line;
-    }
-    .print-label .divider{
-      border:none;
-      border-top:1px solid #ccc;
-      margin:5mm 0;
     }
   }
 </style>
@@ -1257,14 +1303,16 @@
         <div class="stat-label">Books in stock</div>
         <div class="stat-value" id="statStock">0</div>
         <div class="stat-sub" id="statStockSub">across 0 items</div>
+        <div class="stat-sub" id="statBookedAvailable" style="margin-top:4px;"></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Spent restocking</div>
         <div class="stat-value" id="statSpent">₹0</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Net (revenue − spend)</div>
+        <div class="stat-label">Total profit</div>
         <div class="stat-value brass" id="statNet">₹0</div>
+        <div class="stat-sub">book price minus restocking cost</div>
       </div>
       <div class="stat-card wide">
         <div class="stat-label">Orders by type</div>
@@ -1295,6 +1343,8 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12.5 11 14.5 15.5 9.5"/><rect x="4" y="4" width="16" height="16" rx="4"/></svg>
       </button>
     </div>
+
+    <div id="orderStockSummary" class="stock-summary"></div>
 
     <div id="ordersList"></div>
 
@@ -1470,7 +1520,11 @@ const db = getFirestore(firebaseApp);
   }
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-  function rupee(n){ return "₹" + Number(n || 0).toLocaleString("en-IN"); }
+  function rupee(n){
+    const num = Number(n || 0);
+    const sign = num < 0 ? "-" : "";
+    return sign + "₹" + Math.abs(num).toLocaleString("en-IN");
+  }
 
   // ---------- Profile ----------
   function initials(name){
@@ -1714,6 +1768,28 @@ const db = getFirestore(firebaseApp);
     return s ? s.label : "Pending";
   }
 
+  // Keeps an order's stockDeducted flag and the item's physical stock count in sync
+  // with its status. "pending" = still physically in hand (booked, not yet shipped).
+  // "sent"/"received" = physically given away, so it's deducted from stock exactly once.
+  function syncStockForOrderStatus(order, item, newStatus){
+    const wasDeducted = !!order.stockDeducted;
+    const willDeduct = newStatus !== "pending";
+    if (item){
+      if (willDeduct && !wasDeducted){
+        item.stock = Math.max(0, Number(item.stock || 0) - 1);
+        order.stockDeducted = true;
+      } else if (!willDeduct && wasDeducted){
+        item.stock = Number(item.stock || 0) + 1;
+        order.stockDeducted = false;
+      }
+    }
+    order.status = newStatus;
+  }
+
+  function bookedCountForItem(itemId){
+    return data.orders.filter(o => o.itemId === itemId && (o.status || "pending") === "pending").length;
+  }
+
   // ---------- Categorisation ----------
   function categorize(item, price, delivery){
     price = Number(price) || 0;
@@ -1884,18 +1960,34 @@ const db = getFirestore(firebaseApp);
           errorBox.style.display = "block";
           return;
         }
+        const newItemId = itemEl.value || (data.items[0] ? data.items[0].id : null);
+
+        // if the item changed and stock had already been deducted for the old item,
+        // give that unit back before we (re)apply deduction against the new item
+        let stockDeducted = order ? !!order.stockDeducted : false;
+        if (order && stockDeducted && order.itemId !== newItemId){
+          const oldItem = data.items.find(i => i.id === order.itemId);
+          if (oldItem) oldItem.stock = Number(oldItem.stock || 0) + 1;
+          stockDeducted = false;
+        }
+
         const record = {
           id: order ? order.id : uid(),
-          itemId: itemEl.value || (data.items[0] ? data.items[0].id : null),
+          itemId: newItemId,
           address,
           instagramHandle: document.getElementById("orderInstagram").value.trim().replace(/^@/, ""),
           handDelivery: document.getElementById("orderHandDelivery").checked,
           notes: document.getElementById("orderNotes").value.trim(),
           price: Number(priceEl.value) || 0,
           delivery: Number(deliveryEl.value) || 0,
-          status: selectedStatus,
+          status: order ? order.status : "pending",
+          stockDeducted,
           createdAt: order ? order.createdAt : Date.now()
         };
+
+        const newItem = data.items.find(i => i.id === newItemId);
+        syncStockForOrderStatus(record, newItem, selectedStatus);
+
         if (order){
           const idx = data.orders.findIndex(o => o.id === order.id);
           data.orders[idx] = record;
@@ -1907,6 +1999,7 @@ const db = getFirestore(firebaseApp);
         store.save(data);
         closeSheet();
         renderOrders();
+        renderStock();
         renderDashboard();
       } catch(err){
         showToast("Something went wrong saving: " + err.message);
@@ -1924,10 +2017,13 @@ const db = getFirestore(firebaseApp);
       });
       document.getElementById("confirmDeleteOrderBtn").addEventListener("click", () => {
         try{
+          const item = data.items.find(i => i.id === order.itemId);
+          if (order.stockDeducted && item) item.stock = Number(item.stock || 0) + 1;
           data.orders = data.orders.filter(o => o.id !== order.id);
           store.save(data);
           closeSheet();
           renderOrders();
+          renderStock();
           renderDashboard();
           showToast("Order deleted.");
         } catch(err){
@@ -2020,11 +2116,14 @@ const db = getFirestore(firebaseApp);
     const to = (order.address || "").trim();
     return `
       <div class="print-label">
-        <div class="label-tag">From</div>
-        <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
-        <hr class="divider">
-        <div class="label-tag">To</div>
-        <div class="label-block">${escapeHtml(to)}</div>
+        <div class="label-side from-side">
+          <div class="label-tag">From</div>
+          <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
+        </div>
+        <div class="label-side to-side">
+          <div class="label-tag">To</div>
+          <div class="label-block">${escapeHtml(to)}</div>
+        </div>
       </div>
     `;
   }
@@ -2068,8 +2167,31 @@ const db = getFirestore(firebaseApp);
     return list;
   }
 
+  function renderStockSummary(){
+    const el = document.getElementById("orderStockSummary");
+    if (!el) return;
+    if (data.items.length === 0){
+      el.innerHTML = "";
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "flex";
+    el.innerHTML = data.items.map(item => {
+      const booked = bookedCountForItem(item.id);
+      const available = Number(item.stock || 0) - booked;
+      const nameLabel = data.items.length > 1 ? `<span class="item-name">${escapeHtml(item.name)}</span>` : `<span class="item-name">In stock</span>`;
+      return `
+        <div class="stock-summary-line">
+          ${nameLabel}
+          <span class="counts"><b>${booked}</b> booked · <b class="${available <= 0 ? "available-low" : ""}">${available}</b> available</span>
+        </div>
+      `;
+    }).join("");
+  }
+
   function renderOrders(){
     const list = document.getElementById("ordersList");
+    renderStockSummary();
 
     if (data.orders.length === 0){
       list.innerHTML = `<div class="empty-state">
@@ -2108,7 +2230,6 @@ const db = getFirestore(firebaseApp);
             ) : ""}
             <div style="flex:1;min-width:0;">
               <div class="order-name">${escapeHtml(name)}</div>
-              ${rest ? `<div class="order-address-preview">${escapeHtml(rest)}</div>` : ""}
               <div class="tile-tag-row">
                 <span class="badge ${cat.cls}">${cat.label}</span>
                 ${order.handDelivery ? `<span class="badge hand-delivery">Hand delivery</span>` : ""}
@@ -2118,7 +2239,6 @@ const db = getFirestore(firebaseApp);
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
                 @${escapeHtml(order.instagramHandle)}
               </a>` : ""}
-              ${order.notes ? `<div class="order-notes-preview">${escapeHtml(order.notes)}</div>` : ""}
             </div>
             <div class="order-amount">${rupee(total)}</div>
           </div>
@@ -2137,13 +2257,32 @@ const db = getFirestore(firebaseApp);
               <button class="icon-btn print-order" aria-label="Print shipping label">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z"/></svg>
               </button>` : ""}
-              <button class="icon-btn edit-order" aria-label="Edit order">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>
-              </button>
             </div>
           </div>
         </div>`;
     }).join("");
+
+    list.querySelectorAll(".order-tile").forEach(tile => {
+      tile.addEventListener("click", () => {
+        const id = tile.dataset.id;
+        const order = data.orders.find(o => o.id === id);
+        if (!order) return;
+        if (selectionMode){
+          if (order.handDelivery) return;
+          const cb = tile.querySelector(".order-select-checkbox");
+          if (cb){
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          return;
+        }
+        openOrderDetail(order);
+      });
+    });
+
+    list.querySelectorAll(".insta-chip").forEach(chip => {
+      chip.addEventListener("click", (e) => e.stopPropagation());
+    });
 
     list.querySelectorAll(".order-select-checkbox").forEach(box => {
       box.addEventListener("click", (e) => e.stopPropagation());
@@ -2181,23 +2320,153 @@ const db = getFirestore(firebaseApp);
           const id = option.closest(".order-tile").dataset.id;
           const order = data.orders.find(o => o.id === id);
           if (!order) return;
-          order.status = option.dataset.status;
+          const item = data.items.find(i => i.id === order.itemId);
+          syncStockForOrderStatus(order, item, option.dataset.status);
           store.save(data);
           renderOrders();
+          renderStock();
+          renderDashboard();
         } catch(err){
           showToast("Couldn't update status: " + err.message);
         }
       });
     });
+  }
 
-    list.querySelectorAll(".edit-order").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.closest(".order-tile").dataset.id;
-        const order = data.orders.find(o => o.id === id);
+  // ---------- Order detail view ----------
+  function orderDetailHtml(order){
+    const item = data.items.find(i => i.id === order.itemId);
+    const cat = categorize(item, order.price, order.delivery);
+    const lines = order.address.split("\n").map(l => l.trim()).filter(Boolean);
+    const name = lines[0] || "Unnamed order";
+    const total = Number(order.price) + Number(order.delivery);
+    const status = order.status || "pending";
+    return `
+      <div class="sheet-title">${escapeHtml(name)}</div>
+      <div class="sheet-sub">Order details</div>
+
+      <div class="detail-row">
+        <span class="badge ${cat.cls}">${cat.label}</span>
+        ${order.handDelivery ? `<span class="badge hand-delivery">Hand delivery</span>` : ""}
+        <div class="status-control">
+          <div class="status-badge" data-status="${status}"><span class="dot"></span>${statusLabel(status)}</div>
+          <div class="status-quick-menu">
+            ${STATUSES.map(s => `<div class="status-option" data-status="${s.key}"><span class="dot"></span>${s.label}</div>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      ${order.instagramHandle ? `
+      <a class="insta-chip" href="https://instagram.com/${encodeURIComponent(order.instagramHandle)}" target="_blank" rel="noopener" style="margin-bottom:16px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
+        @${escapeHtml(order.instagramHandle)}
+      </a>` : ""}
+
+      <div class="detail-section">
+        <div class="detail-label">Name &amp; address</div>
+        <div class="detail-text">${escapeHtml(order.address)}</div>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-label">Book / item</div>
+        <div class="detail-text">${item ? escapeHtml(item.name) : "—"}</div>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-label">Price &amp; delivery</div>
+        <div class="detail-text">${rupee(order.price)} price + ${rupee(order.delivery)} delivery = ${rupee(total)}</div>
+      </div>
+
+      ${order.notes ? `
+      <div class="detail-section">
+        <div class="detail-label">Notes</div>
+        <div class="detail-text">${escapeHtml(order.notes)}</div>
+      </div>` : ""}
+
+      <div class="sheet-buttons">
+        <button type="button" class="btn ghost" id="detailEditBtn">Edit</button>
+        ${!order.handDelivery ? `<button type="button" class="btn primary" id="detailPrintBtn">Print label</button>` : ""}
+      </div>
+      <div class="sheet-buttons" style="margin-top:10px;" id="detailDeleteRow">
+        <button type="button" class="btn ghost" id="detailDeleteBtn" style="color:var(--error);width:100%;">Delete order</button>
+      </div>
+      <div class="sheet-buttons" style="margin-top:10px;display:none;" id="detailConfirmDeleteRow">
+        <span style="font-size:13px;color:var(--ink-soft);align-self:center;flex:1;">Delete this order?</span>
+        <button type="button" class="btn ghost" id="detailCancelDeleteBtn">No</button>
+        <button type="button" class="btn primary" id="detailConfirmDeleteBtn" style="background:var(--error);border-color:var(--error);">Yes, delete</button>
+      </div>
+    `;
+  }
+
+  function bindOrderDetail(order){
+    const badge = document.querySelector("#sheetContent .status-badge");
+    if (badge){
+      badge.addEventListener("click", (e) => {
+        e.stopPropagation();
+        badge.nextElementSibling.classList.toggle("show");
+      });
+      document.querySelectorAll("#sheetContent .status-option").forEach(opt => {
+        opt.addEventListener("click", (e) => {
+          e.stopPropagation();
+          try{
+            const item = data.items.find(i => i.id === order.itemId);
+            syncStockForOrderStatus(order, item, opt.dataset.status);
+            store.save(data);
+            renderOrders();
+            renderStock();
+            renderDashboard();
+            openOrderDetail(order);
+          } catch(err){
+            showToast("Couldn't update status: " + err.message);
+          }
+        });
+      });
+    }
+
+    const editBtn = document.getElementById("detailEditBtn");
+    if (editBtn){
+      editBtn.addEventListener("click", () => {
         openSheet(orderFormHtml(order));
         bindOrderForm(order);
       });
-    });
+    }
+
+    const printBtn = document.getElementById("detailPrintBtn");
+    if (printBtn){
+      printBtn.addEventListener("click", () => printLabelsForOrders([order]));
+    }
+
+    const deleteBtn = document.getElementById("detailDeleteBtn");
+    if (deleteBtn){
+      deleteBtn.addEventListener("click", () => {
+        document.getElementById("detailDeleteRow").style.display = "none";
+        document.getElementById("detailConfirmDeleteRow").style.display = "flex";
+      });
+      document.getElementById("detailCancelDeleteBtn").addEventListener("click", () => {
+        document.getElementById("detailConfirmDeleteRow").style.display = "none";
+        document.getElementById("detailDeleteRow").style.display = "flex";
+      });
+      document.getElementById("detailConfirmDeleteBtn").addEventListener("click", () => {
+        try{
+          const item = data.items.find(i => i.id === order.itemId);
+          if (order.stockDeducted && item) item.stock = Number(item.stock || 0) + 1;
+          data.orders = data.orders.filter(o => o.id !== order.id);
+          store.save(data);
+          closeSheet();
+          renderOrders();
+          renderStock();
+          renderDashboard();
+          showToast("Order deleted.");
+        } catch(err){
+          showToast("Something went wrong deleting: " + err.message);
+        }
+      });
+    }
+  }
+
+  function openOrderDetail(order){
+    openSheet(orderDetailHtml(order));
+    bindOrderDetail(order);
   }
 
   // ---------- Stock: items ----------
@@ -2221,6 +2490,11 @@ const db = getFirestore(firebaseApp);
             <label for="itemDelivery">Standard delivery (₹)</label>
             <input type="number" id="itemDelivery" min="0" step="1" value="${item ? item.deliveryCharge : ""}">
           </div>
+        </div>
+        <div class="field">
+          <label for="itemDiscount">Purchase discount from publisher (%)</label>
+          <input type="number" id="itemDiscount" min="0" max="100" step="1" value="${item && item.purchaseDiscount != null ? item.purchaseDiscount : 35}">
+          <div class="field-hint">Used to auto-calculate the amount paid when you add stock.</div>
         </div>
         ${!isEdit ? `
         <div class="field">
@@ -2280,15 +2554,18 @@ const db = getFirestore(firebaseApp);
 
         const mrp = Number(mrpInput.value) || 0;
         const deliveryCharge = Number(deliveryInput.value) || 0;
+        const discountInput = document.getElementById("itemDiscount");
+        const purchaseDiscount = Math.min(100, Math.max(0, Number(discountInput.value) || 0));
 
         if (item){
           item.name = name;
           item.mrp = mrp;
           item.deliveryCharge = deliveryCharge;
+          item.purchaseDiscount = purchaseDiscount;
           showToast("Item updated.");
         } else {
           const stock = Number(document.getElementById("itemStock").value) || 0;
-          data.items.push({ id: uid(), name, mrp, deliveryCharge, stock, totalSpent: 0 });
+          data.items.push({ id: uid(), name, mrp, deliveryCharge, purchaseDiscount, stock, totalSpent: 0 });
           showToast("Item added.");
         }
         store.save(data);
@@ -2354,6 +2631,7 @@ const db = getFirestore(firebaseApp);
           <div class="field">
             <label for="stockAmount">Amount paid (₹)</label>
             <input type="number" id="stockAmount" min="0" step="1" placeholder="e.g. 2200">
+            <div class="field-hint">Auto-filled from the item's purchase discount — edit if it's different this time.</div>
           </div>
         </div>
         <div class="field-hint" id="stockFormError" style="display:none;color:var(--error);margin-bottom:12px;"></div>
@@ -2372,6 +2650,36 @@ const db = getFirestore(firebaseApp);
       if (closeBtn1) closeBtn1.addEventListener("click", closeSheet);
       const closeBtn2 = document.getElementById("cancelAddStockBtn2");
       if (closeBtn2) closeBtn2.addEventListener("click", closeSheet);
+
+      const itemSelect = document.getElementById("stockItem");
+      const qtyInput = document.getElementById("stockQty");
+      const amountInput = document.getElementById("stockAmount");
+      let amountManuallyEdited = false;
+
+      function recalcAmount(){
+        if (amountManuallyEdited || !itemSelect || !qtyInput) return;
+        const item = data.items.find(i => i.id === itemSelect.value);
+        const qty = Number(qtyInput.value);
+        if (!item || !qty || qty <= 0){
+          amountInput.value = "";
+          return;
+        }
+        const discount = item.purchaseDiscount != null ? item.purchaseDiscount : 35;
+        const calculated = Math.round(qty * item.mrp * (1 - discount / 100));
+        amountInput.value = calculated;
+      }
+
+      if (qtyInput) qtyInput.addEventListener("input", recalcAmount);
+      if (itemSelect){
+        itemSelect.addEventListener("change", () => {
+          amountManuallyEdited = false;
+          recalcAmount();
+        });
+      }
+      if (amountInput){
+        amountInput.addEventListener("input", () => { amountManuallyEdited = true; });
+      }
+
       const saveBtn = document.getElementById("saveStockBtn");
       if (saveBtn){
         saveBtn.addEventListener("click", () => {
@@ -2480,16 +2788,23 @@ const db = getFirestore(firebaseApp);
   // ---------- Dashboard ----------
   function renderDashboard(){
     const totalRevenue = data.orders.reduce((sum, o) => sum + Number(o.price) + Number(o.delivery), 0);
-    const totalStock = data.items.reduce((sum, i) => sum + Number(i.stock), 0);
+    const totalBookPrice = data.orders.reduce((sum, o) => sum + Number(o.price), 0);
+    const totalStock = data.items.reduce((sum, i) => sum + Number(i.stock || 0), 0);
+    const totalBooked = data.items.reduce((sum, i) => sum + bookedCountForItem(i.id), 0);
+    const totalAvailable = totalStock - totalBooked;
 
     const totalSpent = data.items.reduce((sum, i) => sum + Number(i.totalSpent || 0), 0);
+    const totalProfit = totalBookPrice - totalSpent;
 
     document.getElementById("statRevenue").textContent = rupee(totalRevenue);
     document.getElementById("statRevenueSub").textContent = `from ${data.orders.length} order${data.orders.length === 1 ? "" : "s"}`;
     document.getElementById("statStock").textContent = totalStock;
     document.getElementById("statStockSub").textContent = `across ${data.items.length} item${data.items.length === 1 ? "" : "s"}`;
+    document.getElementById("statBookedAvailable").textContent = `${totalBooked} booked · ${totalAvailable} available`;
     document.getElementById("statSpent").textContent = rupee(totalSpent);
-    document.getElementById("statNet").textContent = rupee(totalRevenue - totalSpent);
+    const netEl = document.getElementById("statNet");
+    netEl.textContent = rupee(totalProfit);
+    netEl.classList.toggle("negative", totalProfit < 0);
 
     const counts = {};
     data.orders.forEach(o => {
