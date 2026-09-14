@@ -106,7 +106,11 @@
     font-weight:600;
     font-size:21px;
     color:var(--ink);
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:opacity .1s ease;
   }
+  .app-title:active{ opacity:0.6; }
   .app-title svg{ flex:0 0 auto; }
 
   .app-tagline{
@@ -643,6 +647,7 @@
   .badge.discount{ background:#EAF0F7; color:#3A5A82; }
   .badge.custom{ background:#F1EEF5; color:#6B5A8A; }
   .badge.hand-delivery{ background:#EAF0F7; color:#3A5A82; }
+  .badge.special-copy{ background:#F1EEF5; color:#6B5A8A; }
 
   .insta-chip{
     display:inline-flex;
@@ -1272,7 +1277,7 @@
 <header class="topbar">
   <div class="topbar-row">
     <div class="topbar-left">
-      <div class="app-title">
+      <div class="app-title" id="appTitleRefresh" role="button" aria-label="Refresh app" title="Tap to refresh">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <path d="M6.5 8.2H17.5L16.6 20.2C16.53 21.16 15.73 21.9 14.77 21.9H9.23C8.27 21.9 7.47 21.16 7.4 20.2L6.5 8.2Z" stroke="#8A6D3B" stroke-width="1.4" stroke-linejoin="round"/>
           <path d="M9 8.2V6.3C9 4.4 10.34 2.9 12 2.9C13.66 2.9 15 4.4 15 6.3V8.2" stroke="#8A6D3B" stroke-width="1.4" stroke-linecap="round"/>
@@ -1318,7 +1323,7 @@
       <div class="stat-card">
         <div class="stat-label">Total profit</div>
         <div class="stat-value brass" id="statNet">₹0</div>
-        <div class="stat-sub">book price minus restocking cost</div>
+        <div class="stat-sub">book price − restocking − postage</div>
       </div>
       <div class="stat-card wide">
         <div class="stat-label">Orders by type</div>
@@ -1777,15 +1782,17 @@ const db = getFirestore(firebaseApp);
   // Keeps an order's stockDeducted flag and the item's physical stock count in sync
   // with its status. "pending" = still physically in hand (booked, not yet shipped).
   // "sent"/"received" = physically given away, so it's deducted from stock exactly once.
+  // Author's-copy orders draw from the separate authorCopyStock pool instead of stock.
   function syncStockForOrderStatus(order, item, newStatus){
     const wasDeducted = !!order.stockDeducted;
     const willDeduct = newStatus !== "pending";
+    const field = order.specialCopy ? "authorCopyStock" : "stock";
     if (item){
       if (willDeduct && !wasDeducted){
-        item.stock = Math.max(0, Number(item.stock || 0) - 1);
+        item[field] = Math.max(0, Number(item[field] || 0) - 1);
         order.stockDeducted = true;
       } else if (!willDeduct && wasDeducted){
-        item.stock = Number(item.stock || 0) + 1;
+        item[field] = Number(item[field] || 0) + 1;
         order.stockDeducted = false;
       }
     }
@@ -1793,31 +1800,34 @@ const db = getFirestore(firebaseApp);
   }
 
   function bookedCountForItem(itemId){
-    return data.orders.filter(o => o.itemId === itemId && (o.status || "pending") === "pending").length;
+    return data.orders.filter(o => o.itemId === itemId && !o.specialCopy && (o.status || "pending") === "pending").length;
+  }
+
+  function authorCopyBookedCountForItem(itemId){
+    return data.orders.filter(o => o.itemId === itemId && o.specialCopy && (o.status || "pending") === "pending").length;
   }
 
   // ---------- Categorisation ----------
-  function categorize(item, price, delivery){
-    price = Number(price) || 0;
-    delivery = Number(delivery) || 0;
-    const mrp = item ? Number(item.mrp) || 0 : 0;
-    const fullDelivery = item ? Number(item.deliveryCharge) || 0 : 0;
-
-    if (price <= 0 && delivery <= 0){
-      return { label: "Free order", cls: "free" };
+  function categorize(item, price, delivery, handDelivery, specialCopy){
+    if (specialCopy){
+      return { label: "Author's copy", cls: "special-copy" };
     }
-    if (price <= 0 && delivery > 0){
-      return { label: "Free book · delivery charged", cls: "custom" };
+    price = Number(price) || 0;
+    delivery = handDelivery ? 0 : (Number(delivery) || 0);
+    const mrp = item ? Number(item.mrp) || 0 : 0;
+    const deliveryPart = handDelivery ? "hand delivery" : (delivery <= 0 ? "free delivery" : "delivery charged");
+    const deliveryCls = handDelivery ? "hand-delivery" : "";
+
+    if (price <= 0){
+      return delivery <= 0 && !handDelivery
+        ? { label: "Free order", cls: "free" }
+        : { label: `Free book · ${deliveryPart}`, cls: deliveryCls || "custom" };
     }
     if (price >= mrp && mrp > 0){
-      return delivery <= 0
-        ? { label: "Full price · free delivery", cls: "full" }
-        : { label: "Full price · delivery charged", cls: "full" };
+      return { label: `Full price · ${deliveryPart}`, cls: deliveryCls || "full" };
     }
     // discounted (0 < price < mrp), or mrp unknown
-    return delivery <= 0
-      ? { label: "Discounted · free delivery", cls: "discount" }
-      : { label: "Discounted · delivery charged", cls: "discount" };
+    return { label: `Discounted · ${deliveryPart}`, cls: deliveryCls || "discount" };
   }
 
   // ---------- Toast ----------
@@ -1887,6 +1897,13 @@ const db = getFirestore(firebaseApp);
         </div>
 
         <div class="field">
+          <label class="checkbox-row" for="orderSpecialCopy">
+            <input type="checkbox" id="orderSpecialCopy" ${order && order.specialCopy ? "checked" : ""}>
+            <span>Author's copy — free giveaway, not for sale (no price or delivery charged)</span>
+          </label>
+        </div>
+
+        <div class="field">
           <label>Status</label>
           <div class="status-row" id="statusRow">
             ${STATUSES.map(s => `<div class="status-chip ${((order ? order.status : "pending") || "pending") === s.key ? "active" : ""}" data-status="${s.key}">${s.label}</div>`).join("")}
@@ -1894,14 +1911,20 @@ const db = getFirestore(firebaseApp);
         </div>
 
         <div class="row-2">
-          <div class="field">
+          <div class="field" id="orderPriceField">
             <label for="orderPrice">Price charged (₹)</label>
             <input type="number" id="orderPrice" min="0" step="1" value="${order ? order.price : ""}">
           </div>
-          <div class="field">
+          <div class="field" id="orderDeliveryField">
             <label for="orderDelivery">Delivery charged (₹)</label>
             <input type="number" id="orderDelivery" min="0" step="1" value="${order ? order.delivery : "0"}">
           </div>
+        </div>
+
+        <div class="field" id="orderPostageField">
+          <label for="orderPostage">Postage you're paying out of pocket (₹)</label>
+          <input type="number" id="orderPostage" min="0" step="1" value="${order ? (order.postageCost || "") : ""}" placeholder="e.g. 40">
+          <div class="field-hint">This is a cost to you, not charged to the customer — it's subtracted from your profit.</div>
         </div>
 
         <div class="field">
@@ -1931,20 +1954,36 @@ const db = getFirestore(firebaseApp);
 
   function bindOrderForm(order){
     const priceEl = document.getElementById("orderPrice");
+    const priceFieldWrap = document.getElementById("orderPriceField");
     const deliveryEl = document.getElementById("orderDelivery");
+    const deliveryFieldWrap = document.getElementById("orderDeliveryField");
+    const postageEl = document.getElementById("orderPostage");
+    const postageFieldWrap = document.getElementById("orderPostageField");
+    const handDeliveryEl = document.getElementById("orderHandDelivery");
+    const specialCopyEl = document.getElementById("orderSpecialCopy");
     const itemEl = document.getElementById("orderItem");
     const preview = document.getElementById("categoryPreview");
     const errorBox = document.getElementById("orderFormError");
 
     function updatePreview(){
       const item = data.items.find(i => i.id === itemEl.value);
-      const cat = categorize(item, priceEl.value, deliveryEl.value);
+      const cat = categorize(item, priceEl.value, deliveryEl.value, handDeliveryEl.checked, specialCopyEl.checked);
       preview.textContent = cat.label;
+    }
+    function updateFieldVisibility(){
+      const hd = handDeliveryEl.checked;
+      const sc = specialCopyEl.checked;
+      priceFieldWrap.style.display = sc ? "none" : "";
+      deliveryFieldWrap.style.display = (hd || sc) ? "none" : "";
+      postageFieldWrap.style.display = (sc && !hd) ? "" : "none";
+      updatePreview();
     }
     priceEl.addEventListener("input", updatePreview);
     deliveryEl.addEventListener("input", updatePreview);
+    handDeliveryEl.addEventListener("change", updateFieldVisibility);
+    specialCopyEl.addEventListener("change", updateFieldVisibility);
     if (itemEl.tagName === "SELECT") itemEl.addEventListener("change", updatePreview);
-    updatePreview();
+    updateFieldVisibility();
 
     document.getElementById("cancelOrderBtn").addEventListener("click", closeSheet);
 
@@ -1967,14 +2006,21 @@ const db = getFirestore(firebaseApp);
           return;
         }
         const newItemId = itemEl.value || (data.items[0] ? data.items[0].id : null);
+        const newSpecialCopy = specialCopyEl.checked;
+        const newHandDelivery = handDeliveryEl.checked;
 
-        // if the item changed and stock had already been deducted for the old item,
-        // give that unit back before we (re)apply deduction against the new item
+        // if the item or special-copy pool changed and stock had already been deducted,
+        // give that unit back (from the correct old pool) before we (re)apply deduction
         let stockDeducted = order ? !!order.stockDeducted : false;
-        if (order && stockDeducted && order.itemId !== newItemId){
+        if (order && stockDeducted){
           const oldItem = data.items.find(i => i.id === order.itemId);
-          if (oldItem) oldItem.stock = Number(oldItem.stock || 0) + 1;
-          stockDeducted = false;
+          const itemChanged = order.itemId !== newItemId;
+          const poolChanged = !!order.specialCopy !== newSpecialCopy;
+          if (oldItem && (itemChanged || poolChanged)){
+            const oldField = order.specialCopy ? "authorCopyStock" : "stock";
+            oldItem[oldField] = Number(oldItem[oldField] || 0) + 1;
+            stockDeducted = false;
+          }
         }
 
         const record = {
@@ -1982,10 +2028,12 @@ const db = getFirestore(firebaseApp);
           itemId: newItemId,
           address,
           instagramHandle: document.getElementById("orderInstagram").value.trim().replace(/^@/, ""),
-          handDelivery: document.getElementById("orderHandDelivery").checked,
+          handDelivery: newHandDelivery,
+          specialCopy: newSpecialCopy,
           notes: document.getElementById("orderNotes").value.trim(),
-          price: Number(priceEl.value) || 0,
-          delivery: Number(deliveryEl.value) || 0,
+          price: newSpecialCopy ? 0 : (Number(priceEl.value) || 0),
+          delivery: (newHandDelivery || newSpecialCopy) ? 0 : (Number(deliveryEl.value) || 0),
+          postageCost: (newSpecialCopy && !newHandDelivery) ? (Number(postageEl.value) || 0) : 0,
           status: order ? order.status : "pending",
           stockDeducted,
           createdAt: order ? order.createdAt : Date.now()
@@ -2024,7 +2072,7 @@ const db = getFirestore(firebaseApp);
       document.getElementById("confirmDeleteOrderBtn").addEventListener("click", () => {
         try{
           const item = data.items.find(i => i.id === order.itemId);
-          if (order.stockDeducted && item) item.stock = Number(item.stock || 0) + 1;
+          if (order.stockDeducted && item){ const field = order.specialCopy ? "authorCopyStock" : "stock"; item[field] = Number(item[field] || 0) + 1; }
           data.orders = data.orders.filter(o => o.id !== order.id);
           store.save(data);
           closeSheet();
@@ -2147,7 +2195,7 @@ const db = getFirestore(firebaseApp);
 
   function orderSearchHaystack(order){
     const item = data.items.find(i => i.id === order.itemId);
-    const cat = categorize(item, order.price, order.delivery);
+    const cat = categorize(item, order.price, order.delivery, order.handDelivery, order.specialCopy);
     return [
       order.address,
       order.notes,
@@ -2189,11 +2237,25 @@ const db = getFirestore(firebaseApp);
       const nameLabel = data.items.length > 1
         ? `<span class="item-name">${escapeHtml(item.name)} <span class="stock-total">(${stock} in stock)</span></span>`
         : `<span class="item-name">In stock <span class="stock-total">(${stock})</span></span>`;
+
+      const authorStock = Number(item.authorCopyStock || 0);
+      const authorLine = authorStock > 0 ? (() => {
+        const authorBooked = authorCopyBookedCountForItem(item.id);
+        const authorAvailable = authorStock - authorBooked;
+        return `
+          <div class="stock-summary-line">
+            <span class="item-name">Author's copies <span class="stock-total">(${authorStock})</span></span>
+            <span class="counts"><b>${authorBooked}</b> booked · <b class="${authorAvailable <= 0 ? "available-low" : ""}">${authorAvailable}</b> available</span>
+          </div>
+        `;
+      })() : "";
+
       return `
         <div class="stock-summary-line">
           ${nameLabel}
           <span class="counts"><b>${booked}</b> booked · <b class="${available <= 0 ? "available-low" : ""}">${available}</b> available</span>
         </div>
+        ${authorLine}
       `;
     }).join("");
   }
@@ -2236,7 +2298,7 @@ const db = getFirestore(firebaseApp);
 
     list.innerHTML = visibleOrders.map(order => {
       const item = data.items.find(i => i.id === order.itemId);
-      const cat = categorize(item, order.price, order.delivery);
+      const cat = categorize(item, order.price, order.delivery, order.handDelivery, order.specialCopy);
       const lines = order.address.split("\n").map(l => l.trim()).filter(Boolean);
       const name = lines[0] || "Unnamed order";
       const rest = lines.slice(1).join(", ");
@@ -2359,7 +2421,7 @@ const db = getFirestore(firebaseApp);
   // ---------- Order detail view ----------
   function orderDetailHtml(order){
     const item = data.items.find(i => i.id === order.itemId);
-    const cat = categorize(item, order.price, order.delivery);
+    const cat = categorize(item, order.price, order.delivery, order.handDelivery, order.specialCopy);
     const lines = order.address.split("\n").map(l => l.trim()).filter(Boolean);
     const name = lines[0] || "Unnamed order";
     const total = Number(order.price) + Number(order.delivery);
@@ -2472,7 +2534,7 @@ const db = getFirestore(firebaseApp);
       document.getElementById("detailConfirmDeleteBtn").addEventListener("click", () => {
         try{
           const item = data.items.find(i => i.id === order.itemId);
-          if (order.stockDeducted && item) item.stock = Number(item.stock || 0) + 1;
+          if (order.stockDeducted && item){ const field = order.specialCopy ? "authorCopyStock" : "stock"; item[field] = Number(item[field] || 0) + 1; }
           data.orders = data.orders.filter(o => o.id !== order.id);
           store.save(data);
           closeSheet();
@@ -2588,7 +2650,7 @@ const db = getFirestore(firebaseApp);
           showToast("Item updated.");
         } else {
           const stock = Number(document.getElementById("itemStock").value) || 0;
-          data.items.push({ id: uid(), name, mrp, deliveryCharge, purchaseDiscount, stock, totalSpent: 0 });
+          data.items.push({ id: uid(), name, mrp, deliveryCharge, purchaseDiscount, stock, authorCopyStock: 0, totalSpent: 0 });
           showToast("Item added.");
         }
         store.save(data);
@@ -2646,12 +2708,18 @@ const db = getFirestore(firebaseApp);
           <label for="stockItem">Book / item</label>
           <select id="stockItem">${itemOptions(data.items[0].id)}</select>
         </div>
+        <div class="field">
+          <label class="checkbox-row" for="stockIsAuthorCopy">
+            <input type="checkbox" id="stockIsAuthorCopy">
+            <span>Author's copies — free from the publisher, kept for giveaways only (not for sale)</span>
+          </label>
+        </div>
         <div class="row-2">
           <div class="field">
             <label for="stockQty">Quantity purchased</label>
             <input type="number" id="stockQty" min="1" step="1" placeholder="e.g. 20">
           </div>
-          <div class="field">
+          <div class="field" id="stockAmountField">
             <label for="stockAmount">Amount paid (₹)</label>
             <input type="number" id="stockAmount" min="0" step="1" placeholder="e.g. 2200">
             <div class="field-hint">Auto-filled from the item's purchase discount — edit if it's different this time.</div>
@@ -2677,6 +2745,8 @@ const db = getFirestore(firebaseApp);
       const itemSelect = document.getElementById("stockItem");
       const qtyInput = document.getElementById("stockQty");
       const amountInput = document.getElementById("stockAmount");
+      const amountFieldWrap = document.getElementById("stockAmountField");
+      const authorCopyEl = document.getElementById("stockIsAuthorCopy");
       let amountManuallyEdited = false;
 
       function recalcAmount(){
@@ -2692,6 +2762,11 @@ const db = getFirestore(firebaseApp);
         amountInput.value = calculated;
       }
 
+      function updateAuthorCopyVisibility(){
+        const isAuthorCopy = authorCopyEl.checked;
+        amountFieldWrap.style.display = isAuthorCopy ? "none" : "";
+      }
+
       if (qtyInput) qtyInput.addEventListener("input", recalcAmount);
       if (itemSelect){
         itemSelect.addEventListener("change", () => {
@@ -2702,6 +2777,7 @@ const db = getFirestore(firebaseApp);
       if (amountInput){
         amountInput.addEventListener("input", () => { amountManuallyEdited = true; });
       }
+      authorCopyEl.addEventListener("change", updateAuthorCopyVisibility);
 
       const saveBtn = document.getElementById("saveStockBtn");
       if (saveBtn){
@@ -2713,8 +2789,9 @@ const db = getFirestore(firebaseApp);
             const itemId = document.getElementById("stockItem").value;
             const qtyInput = document.getElementById("stockQty");
             const amountInput = document.getElementById("stockAmount");
+            const isAuthorCopy = authorCopyEl.checked;
             const qty = Number(qtyInput.value);
-            const amountPaid = amountInput.value === "" ? 0 : Number(amountInput.value);
+            const amountPaid = isAuthorCopy ? 0 : (amountInput.value === "" ? 0 : Number(amountInput.value));
 
             if (!qty || qty <= 0){
               errorBox.textContent = "Enter a quantity of 1 or more.";
@@ -2730,10 +2807,14 @@ const db = getFirestore(firebaseApp);
               return;
             }
 
-            item.stock += qty;
-            item.totalSpent = (item.totalSpent || 0) + amountPaid;
+            if (isAuthorCopy){
+              item.authorCopyStock = Number(item.authorCopyStock || 0) + qty;
+            } else {
+              item.stock = Number(item.stock || 0) + qty;
+              item.totalSpent = (item.totalSpent || 0) + amountPaid;
+            }
             store.save(data);
-            showToast(`Added ${qty} to ${item.name}${amountPaid ? " for " + rupee(amountPaid) : ""}.`);
+            showToast(`Added ${qty} ${isAuthorCopy ? "author's copies" : "copies"} to ${item.name}${amountPaid ? " for " + rupee(amountPaid) : ""}.`);
             closeSheet();
             renderStock();
             renderDashboard();
@@ -2779,6 +2860,7 @@ const db = getFirestore(firebaseApp);
             </div>
             <div class="item-meta">MRP ${rupee(item.mrp)} · Delivery ${rupee(item.deliveryCharge)}</div>
             <div class="item-stock ${low ? "low" : "ok"}">${item.stock} in stock</div>
+            ${item.authorCopyStock ? `<div class="item-meta">${item.authorCopyStock} author's copies (giveaway only)</div>` : ""}
             ${item.totalSpent ? `<div class="item-meta">${rupee(item.totalSpent)} spent restocking</div>` : ""}
           </div>
           <div class="item-buttons">
@@ -2817,7 +2899,8 @@ const db = getFirestore(firebaseApp);
     const totalAvailable = totalStock - totalBooked;
 
     const totalSpent = data.items.reduce((sum, i) => sum + Number(i.totalSpent || 0), 0);
-    const totalProfit = totalBookPrice - totalSpent;
+    const totalPostage = data.orders.reduce((sum, o) => sum + Number(o.postageCost || 0), 0);
+    const totalProfit = totalBookPrice - totalSpent - totalPostage;
 
     document.getElementById("statRevenue").textContent = rupee(totalRevenue);
     document.getElementById("statRevenueSub").textContent = `from ${data.orders.length} order${data.orders.length === 1 ? "" : "s"}`;
@@ -2832,7 +2915,7 @@ const db = getFirestore(firebaseApp);
     const counts = {};
     data.orders.forEach(o => {
       const item = data.items.find(i => i.id === o.itemId);
-      const cat = categorize(item, o.price, o.delivery);
+      const cat = categorize(item, o.price, o.delivery, o.handDelivery, o.specialCopy);
       counts[cat.label] = (counts[cat.label] || 0) + 1;
     });
 
@@ -2847,6 +2930,11 @@ const db = getFirestore(firebaseApp);
   document.addEventListener("click", () => {
     document.querySelectorAll(".status-quick-menu.show").forEach(m => m.classList.remove("show"));
     document.getElementById("profileMenu").classList.remove("show");
+  });
+
+  // ---------- App name / logo: tap to refresh (pulls in any newly deployed changes) ----------
+  document.getElementById("appTitleRefresh").addEventListener("click", () => {
+    window.location.reload();
   });
 
   // ---------- Profile menu (dropdown) ----------
