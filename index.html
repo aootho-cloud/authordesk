@@ -2171,40 +2171,42 @@ const db = getFirestore(firebaseApp);
   });
 
   // ---------- Order search / filter state ----------
-  const orderFilters = { search: "", status: "all", type: "all", authorCopy: "all", dateFrom: "", dateTo: "" };
+  const orderFilters = { search: "", status: "all", types: [], dateFrom: "", dateTo: "" };
 
   function orderFiltersActive(){
-    return orderFilters.type !== "all" || orderFilters.authorCopy !== "all" || !!orderFilters.dateFrom || !!orderFilters.dateTo;
+    return orderFilters.types.length > 0 || !!orderFilters.dateFrom || !!orderFilters.dateTo;
   }
 
+  // Each type is an independent tag, not mutually exclusive with the others —
+  // an order can be e.g. both "Full book price" and "Free delivery" at once.
   const ORDER_TYPE_OPTIONS = [
-    { key: "free", label: "Free" },
-    { key: "full", label: "Full price" },
-    { key: "discount", label: "Discounted" },
-    { key: "custom", label: "Free book · delivery charged" },
-    { key: "hand-delivery", label: "Hand delivery" },
-    { key: "special-copy", label: "Author's copy" }
+    { key: "free-book", label: "Free book", test: (o) => (Number(o.price) || 0) <= 0 },
+    { key: "free-delivery", label: "Free delivery", test: (o) => (Number(o.delivery) || 0) <= 0 },
+    { key: "discounted-book", label: "Discounted book", test: (o, item) => !!item && Number(item.mrp || 0) > 0 && (Number(o.price) || 0) > 0 && (Number(o.price) || 0) < Number(item.mrp) },
+    { key: "delivery-charged", label: "Delivery charged", test: (o) => (Number(o.delivery) || 0) > 0 },
+    { key: "full-book-price", label: "Full book price", test: (o, item) => !!item && Number(item.mrp || 0) > 0 && (Number(o.price) || 0) >= Number(item.mrp) },
+    { key: "author-copy", label: "Author copy", test: (o) => !!o.specialCopy },
+    { key: "hand-delivery", label: "Hand delivery", test: (o) => !!o.handDelivery }
   ];
+
+  function orderMatchesSelectedTypes(order){
+    if (orderFilters.types.length === 0) return true;
+    const item = data.items.find(i => i.id === order.itemId);
+    return ORDER_TYPE_OPTIONS
+      .filter(t => orderFilters.types.includes(t.key))
+      .some(t => t.test(order, item));
+  }
 
   function orderFilterSheetHtml(){
     return `
       <div class="sheet-title">Filter orders</div>
-      <div class="sheet-sub">Narrow down by type, author's copies, or date.</div>
+      <div class="sheet-sub">Narrow down by type or date. Type is multi-select.</div>
 
       <div class="filter-section">
         <div class="filter-section-label">Order type</div>
         <div class="filter-options" id="filterTypeOptions">
-          <div class="filter-option ${orderFilters.type === "all" ? "active" : ""}" data-value="all">All</div>
-          ${ORDER_TYPE_OPTIONS.map(t => `<div class="filter-option ${orderFilters.type === t.key ? "active" : ""}" data-value="${t.key}">${t.label}</div>`).join("")}
-        </div>
-      </div>
-
-      <div class="filter-section">
-        <div class="filter-section-label">Author's copies</div>
-        <div class="filter-options" id="filterAuthorCopyOptions">
-          <div class="filter-option ${orderFilters.authorCopy === "all" ? "active" : ""}" data-value="all">All orders</div>
-          <div class="filter-option ${orderFilters.authorCopy === "only" ? "active" : ""}" data-value="only">Only author's copies</div>
-          <div class="filter-option ${orderFilters.authorCopy === "exclude" ? "active" : ""}" data-value="exclude">Exclude author's copies</div>
+          <div class="filter-option ${orderFilters.types.length === 0 ? "active" : ""}" data-value="all">All</div>
+          ${ORDER_TYPE_OPTIONS.map(t => `<div class="filter-option ${orderFilters.types.includes(t.key) ? "active" : ""}" data-value="${t.key}">${t.label}</div>`).join("")}
         </div>
       </div>
 
@@ -2237,8 +2239,7 @@ const db = getFirestore(firebaseApp);
     document.getElementById("doneOrderFiltersBtn").addEventListener("click", closeSheet);
 
     document.getElementById("resetOrderFiltersBtn").addEventListener("click", () => {
-      orderFilters.type = "all";
-      orderFilters.authorCopy = "all";
+      orderFilters.types = [];
       orderFilters.dateFrom = "";
       orderFilters.dateTo = "";
       updateOrderFilterDot();
@@ -2250,18 +2251,17 @@ const db = getFirestore(firebaseApp);
     const typeGroup = document.getElementById("filterTypeOptions");
     typeGroup.querySelectorAll(".filter-option").forEach(opt => {
       opt.addEventListener("click", () => {
-        orderFilters.type = opt.dataset.value;
-        typeGroup.querySelectorAll(".filter-option").forEach(o => o.classList.toggle("active", o === opt));
-        updateOrderFilterDot();
-        renderOrders();
-      });
-    });
-
-    const authorGroup = document.getElementById("filterAuthorCopyOptions");
-    authorGroup.querySelectorAll(".filter-option").forEach(opt => {
-      opt.addEventListener("click", () => {
-        orderFilters.authorCopy = opt.dataset.value;
-        authorGroup.querySelectorAll(".filter-option").forEach(o => o.classList.toggle("active", o === opt));
+        if (opt.dataset.value === "all"){
+          orderFilters.types = [];
+        } else {
+          const key = opt.dataset.value;
+          const idx = orderFilters.types.indexOf(key);
+          if (idx === -1) orderFilters.types.push(key);
+          else orderFilters.types.splice(idx, 1);
+        }
+        typeGroup.querySelectorAll(".filter-option").forEach(o => {
+          o.classList.toggle("active", o.dataset.value === "all" ? orderFilters.types.length === 0 : orderFilters.types.includes(o.dataset.value));
+        });
         updateOrderFilterDot();
         renderOrders();
       });
@@ -2380,14 +2380,7 @@ const db = getFirestore(firebaseApp);
     let list = data.orders.filter(order => {
       if (orderFilters.status !== "all" && (order.status || "pending") !== orderFilters.status) return false;
 
-      if (orderFilters.authorCopy === "only" && !order.specialCopy) return false;
-      if (orderFilters.authorCopy === "exclude" && order.specialCopy) return false;
-
-      if (orderFilters.type !== "all"){
-        const item = data.items.find(i => i.id === order.itemId);
-        const cat = categorize(item, order.price, order.delivery, order.handDelivery, order.specialCopy);
-        if (cat.cls !== orderFilters.type) return false;
-      }
+      if (!orderMatchesSelectedTypes(order)) return false;
 
       if (fromTs !== null && order.createdAt < fromTs) return false;
       if (toTs !== null && order.createdAt > toTs) return false;
