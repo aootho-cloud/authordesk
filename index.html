@@ -471,6 +471,7 @@
   .clear-search:hover{ color:var(--ink); }
 
   .select-toggle-btn{
+    position:relative;
     flex:0 0 40px;
     width:40px;
     display:flex;
@@ -484,6 +485,49 @@
   }
   .select-toggle-btn:hover{ background:var(--brass-tint); }
   .select-toggle-btn.active{ background:var(--ink); border-color:var(--ink); color:#FBF6EC; }
+  .filter-dot{
+    position:absolute;
+    top:-3px; right:-3px;
+    width:9px; height:9px;
+    border-radius:50%;
+    background:var(--brass-dark);
+    border:2px solid var(--paper);
+    display:none;
+  }
+  .filter-dot.show{ display:block; }
+
+  .filter-section{ margin-bottom:18px; }
+  .filter-section-label{
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+  }
+  .filter-options{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .filter-option{
+    padding:8px 13px;
+    font-size:13px;
+    font-weight:600;
+    border-radius:100px;
+    border:1px solid var(--rule);
+    background:var(--paper);
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .filter-option.active{
+    background:var(--ink);
+    border-color:var(--ink);
+    color:#FBF6EC;
+  }
+  .filter-date-row{
+    display:flex;
+    gap:10px;
+  }
+  .filter-date-row .field{ flex:1; margin-bottom:0; }
 
   .order-tile.selectable{ display:flex; flex-direction:column; }
 
@@ -1350,6 +1394,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
+      <button class="select-toggle-btn" id="btnOrderFilters" aria-label="More filters">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        <span class="filter-dot" id="orderFilterDot"></span>
+      </button>
       <button class="select-toggle-btn" id="btnToggleSelect" aria-label="Select orders for label printing">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12.5 11 14.5 15.5 9.5"/><rect x="4" y="4" width="16" height="16" rx="4"/></svg>
       </button>
@@ -2123,7 +2171,122 @@ const db = getFirestore(firebaseApp);
   });
 
   // ---------- Order search / filter state ----------
-  const orderFilters = { search: "", status: "all" };
+  const orderFilters = { search: "", status: "all", type: "all", authorCopy: "all", dateFrom: "", dateTo: "" };
+
+  function orderFiltersActive(){
+    return orderFilters.type !== "all" || orderFilters.authorCopy !== "all" || !!orderFilters.dateFrom || !!orderFilters.dateTo;
+  }
+
+  const ORDER_TYPE_OPTIONS = [
+    { key: "free", label: "Free" },
+    { key: "full", label: "Full price" },
+    { key: "discount", label: "Discounted" },
+    { key: "custom", label: "Free book · delivery charged" },
+    { key: "hand-delivery", label: "Hand delivery" },
+    { key: "special-copy", label: "Author's copy" }
+  ];
+
+  function orderFilterSheetHtml(){
+    return `
+      <div class="sheet-title">Filter orders</div>
+      <div class="sheet-sub">Narrow down by type, author's copies, or date.</div>
+
+      <div class="filter-section">
+        <div class="filter-section-label">Order type</div>
+        <div class="filter-options" id="filterTypeOptions">
+          <div class="filter-option ${orderFilters.type === "all" ? "active" : ""}" data-value="all">All</div>
+          ${ORDER_TYPE_OPTIONS.map(t => `<div class="filter-option ${orderFilters.type === t.key ? "active" : ""}" data-value="${t.key}">${t.label}</div>`).join("")}
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-section-label">Author's copies</div>
+        <div class="filter-options" id="filterAuthorCopyOptions">
+          <div class="filter-option ${orderFilters.authorCopy === "all" ? "active" : ""}" data-value="all">All orders</div>
+          <div class="filter-option ${orderFilters.authorCopy === "only" ? "active" : ""}" data-value="only">Only author's copies</div>
+          <div class="filter-option ${orderFilters.authorCopy === "exclude" ? "active" : ""}" data-value="exclude">Exclude author's copies</div>
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-section-label">Date of order</div>
+        <div class="filter-date-row">
+          <div class="field">
+            <label for="filterDateFrom">From</label>
+            <input type="date" id="filterDateFrom" value="${orderFilters.dateFrom}">
+          </div>
+          <div class="field">
+            <label for="filterDateTo">To</label>
+            <input type="date" id="filterDateTo" value="${orderFilters.dateTo}">
+          </div>
+        </div>
+      </div>
+
+      <div class="sheet-buttons">
+        <button type="button" class="btn ghost" id="resetOrderFiltersBtn">Reset</button>
+        <button type="button" class="btn primary" id="doneOrderFiltersBtn">Done</button>
+      </div>
+    `;
+  }
+
+  function updateOrderFilterDot(){
+    document.getElementById("orderFilterDot").classList.toggle("show", orderFiltersActive());
+  }
+
+  function bindOrderFilterSheet(){
+    document.getElementById("doneOrderFiltersBtn").addEventListener("click", closeSheet);
+
+    document.getElementById("resetOrderFiltersBtn").addEventListener("click", () => {
+      orderFilters.type = "all";
+      orderFilters.authorCopy = "all";
+      orderFilters.dateFrom = "";
+      orderFilters.dateTo = "";
+      updateOrderFilterDot();
+      renderOrders();
+      openSheet(orderFilterSheetHtml());
+      bindOrderFilterSheet();
+    });
+
+    const typeGroup = document.getElementById("filterTypeOptions");
+    typeGroup.querySelectorAll(".filter-option").forEach(opt => {
+      opt.addEventListener("click", () => {
+        orderFilters.type = opt.dataset.value;
+        typeGroup.querySelectorAll(".filter-option").forEach(o => o.classList.toggle("active", o === opt));
+        updateOrderFilterDot();
+        renderOrders();
+      });
+    });
+
+    const authorGroup = document.getElementById("filterAuthorCopyOptions");
+    authorGroup.querySelectorAll(".filter-option").forEach(opt => {
+      opt.addEventListener("click", () => {
+        orderFilters.authorCopy = opt.dataset.value;
+        authorGroup.querySelectorAll(".filter-option").forEach(o => o.classList.toggle("active", o === opt));
+        updateOrderFilterDot();
+        renderOrders();
+      });
+    });
+
+    document.getElementById("filterDateFrom").addEventListener("change", (e) => {
+      orderFilters.dateFrom = e.target.value;
+      updateOrderFilterDot();
+      renderOrders();
+    });
+    document.getElementById("filterDateTo").addEventListener("change", (e) => {
+      orderFilters.dateTo = e.target.value;
+      updateOrderFilterDot();
+      renderOrders();
+    });
+  }
+
+  document.getElementById("btnOrderFilters").addEventListener("click", () => {
+    try{
+      openSheet(orderFilterSheetHtml());
+      bindOrderFilterSheet();
+    } catch(err){
+      showToast("Couldn't open filters: " + err.message);
+    }
+  });
 
   // ---------- Selection mode (for bulk label printing) ----------
   let selectionMode = false;
@@ -2211,8 +2374,24 @@ const db = getFirestore(firebaseApp);
 
   function getFilteredSortedOrders(){
     const q = orderFilters.search.trim().toLowerCase();
+    const fromTs = orderFilters.dateFrom ? new Date(orderFilters.dateFrom + "T00:00:00").getTime() : null;
+    const toTs = orderFilters.dateTo ? new Date(orderFilters.dateTo + "T23:59:59.999").getTime() : null;
+
     let list = data.orders.filter(order => {
       if (orderFilters.status !== "all" && (order.status || "pending") !== orderFilters.status) return false;
+
+      if (orderFilters.authorCopy === "only" && !order.specialCopy) return false;
+      if (orderFilters.authorCopy === "exclude" && order.specialCopy) return false;
+
+      if (orderFilters.type !== "all"){
+        const item = data.items.find(i => i.id === order.itemId);
+        const cat = categorize(item, order.price, order.delivery, order.handDelivery, order.specialCopy);
+        if (cat.cls !== orderFilters.type) return false;
+      }
+
+      if (fromTs !== null && order.createdAt < fromTs) return false;
+      if (toTs !== null && order.createdAt > toTs) return false;
+
       if (q && !orderSearchHaystack(order).includes(q)) return false;
       return true;
     });
