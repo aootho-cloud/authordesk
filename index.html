@@ -41,17 +41,48 @@
   body{
     margin:0;
     font-family:'Inter', system-ui, sans-serif;
-    background:var(--paper);
+    background:#DDD6C8;
     color:var(--ink);
-    min-height:100vh;
-    padding-bottom:78px;
     -webkit-tap-highlight-color:transparent;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    height:100dvh;
+    overflow:hidden;
+  }
+
+  .phone-frame{
+    position:relative;
+    width:100%;
+    height:100dvh;
+    max-width:430px;
+    max-height:100dvh;
+    background:var(--paper);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .app-root{
+    position:relative;
+    flex-direction:column;
+    height:100%;
+    width:100%;
+    overflow:hidden;
+  }
+
+  @media (min-width:521px){
+    body{ padding:28px; }
+    .phone-frame{
+      max-height:900px;
+      border-radius:36px;
+      box-shadow:0 30px 60px -20px rgba(31,42,60,0.35);
+      border:1px solid rgba(31,42,60,0.08);
+    }
   }
 
   header.topbar{
-    position:sticky;
-    top:0;
-    z-index:5;
+    flex:0 0 auto;
     background:var(--paper);
     padding:20px 20px 10px;
     border-bottom:1px solid transparent;
@@ -140,7 +171,7 @@
 
   /* ---------- Boot loading ---------- */
   .boot-loading{
-    position:fixed;
+    position:absolute;
     inset:0;
     display:flex;
     flex-direction:column;
@@ -162,7 +193,8 @@
   /* ---------- Auth screens ---------- */
   .auth-wrap{
     display:none;
-    min-height:100vh;
+    height:100%;
+    overflow-y:auto;
     align-items:center;
     justify-content:center;
     padding:32px 20px;
@@ -289,7 +321,12 @@
   .account-email-row .email-label{ font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:2px; }
   .account-email-row .email-value{ font-size:14px; color:var(--ink); }
 
-  main{ padding:16px 16px 8px; max-width:520px; margin:0 auto; }
+  main{
+    flex:1 1 auto;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:16px 16px 8px;
+  }
 
   .tab-panel{ display:none; }
   .tab-panel.active{ display:block; }
@@ -653,17 +690,15 @@
 
   /* ---------- Bottom nav ---------- */
   nav.bottom-nav{
-    position:fixed;
-    bottom:0; left:0; right:0;
+    flex:0 0 auto;
     background:var(--paper-panel);
     border-top:1px solid var(--rule);
     display:flex;
     padding:8px 10px calc(8px + env(safe-area-inset-bottom));
-    z-index:10;
   }
 
   .fab{
-    position:fixed;
+    position:absolute;
     right:20px;
     bottom:calc(78px + env(safe-area-inset-bottom));
     width:54px;
@@ -712,7 +747,7 @@
 
   /* ---------- Modal / bottom sheet ---------- */
   .overlay{
-    position:fixed; inset:0;
+    position:absolute; inset:0;
     background:rgba(31,42,60,0.36);
     display:none;
     align-items:flex-end;
@@ -866,7 +901,7 @@
   }
 
   .toast{
-    position:fixed;
+    position:absolute;
     bottom:92px;
     left:50%;
     transform:translateX(-50%) translateY(12px);
@@ -891,6 +926,8 @@
 </style>
 </head>
 <body>
+
+<div class="phone-frame">
 
 <!-- ================= BOOT LOADING ================= -->
 <div class="boot-loading" id="bootLoading">
@@ -1031,7 +1068,7 @@
 </div>
 
 <!-- ================= APP ================= -->
-<div id="appRoot" style="display:none;">
+<div id="appRoot" style="display:none;" class="app-root">
 
 <header class="topbar">
   <div class="topbar-row">
@@ -1158,6 +1195,8 @@
 <div class="toast" id="toast"></div>
 
 </div><!-- /#appRoot -->
+
+</div><!-- /.phone-frame -->
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -2270,7 +2309,7 @@ const auth = getAuth(firebaseApp);
   function showApp(user){
     document.getElementById("bootLoading").style.display = "none";
     document.getElementById("authScreens").classList.remove("show");
-    document.getElementById("appRoot").style.display = "block";
+    document.getElementById("appRoot").style.display = "flex";
 
     data.profile.email = user.email || "";
     store.save(data);
