@@ -647,6 +647,13 @@
   .stock-summary-line .counts b{ color:var(--ink); font-weight:700; }
   .stock-summary-line .counts .available-low{ color:var(--error); }
 
+  .reseller-count{
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:12px;
+  }
+
   .status-filter-row{
     display:flex;
     gap:8px;
@@ -1563,6 +1570,28 @@
 
   <!-- ================= RESELLERS ================= -->
   <section class="tab-panel" id="panel-resellers">
+    <div class="reseller-count" id="resellerCount"></div>
+
+    <div class="status-filter-row" id="resellerStatusFilterRow">
+      <div class="status-filter-chip active" data-value="all">All</div>
+      <div class="status-filter-chip" data-value="not-contacted">Not contacted</div>
+      <div class="status-filter-chip" data-value="contacted">Contacted</div>
+      <div class="status-filter-chip" data-value="responded">Responded</div>
+      <div class="status-filter-chip" data-value="accepted">Accepted</div>
+      <div class="status-filter-chip" data-value="rejected">Rejected</div>
+      <div class="status-filter-chip" data-value="on-sale">On sale</div>
+    </div>
+
+    <div class="search-row">
+      <div class="search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="resellerSearch" placeholder="Search handle or notes…">
+        <button class="clear-search" id="clearResellerSearch" aria-label="Clear search" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
     <div id="resellersList"></div>
   </section>
 
@@ -3805,8 +3834,60 @@ const db = getFirestore(firebaseApp);
     }
   });
 
+  // ---------- Reseller search / status filter ----------
+  const resellerFilters = { search: "", status: "all" };
+
+  function resellerSearchHaystack(reseller){
+    return [
+      reseller.url,
+      resellerDisplayHandle(reseller),
+      resellerStatusLabel(reseller.status || "not-contacted"),
+      ensureNotesArray(reseller).map(n => n.text).join(" ")
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
+  function getFilteredResellers(){
+    const q = resellerFilters.search.trim().toLowerCase();
+    return data.resellers.filter(reseller => {
+      if (resellerFilters.status !== "all" && (reseller.status || "not-contacted") !== resellerFilters.status) return false;
+      if (q && !resellerSearchHaystack(reseller).includes(q)) return false;
+      return true;
+    });
+  }
+
+  function updateResellerCount(){
+    const el = document.getElementById("resellerCount");
+    const n = data.resellers.length;
+    el.textContent = `${n} reseller${n === 1 ? "" : "s"} added`;
+  }
+
+  const resellerSearchInput = document.getElementById("resellerSearch");
+  const clearResellerSearchBtn = document.getElementById("clearResellerSearch");
+
+  resellerSearchInput.addEventListener("input", () => {
+    resellerFilters.search = resellerSearchInput.value;
+    clearResellerSearchBtn.style.display = resellerFilters.search ? "flex" : "none";
+    renderResellers();
+  });
+  clearResellerSearchBtn.addEventListener("click", () => {
+    resellerSearchInput.value = "";
+    resellerFilters.search = "";
+    clearResellerSearchBtn.style.display = "none";
+    resellerSearchInput.focus();
+    renderResellers();
+  });
+
+  document.getElementById("resellerStatusFilterRow").querySelectorAll(".status-filter-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      resellerFilters.status = chip.dataset.value;
+      document.querySelectorAll("#resellerStatusFilterRow .status-filter-chip").forEach(c => c.classList.toggle("active", c === chip));
+      renderResellers();
+    });
+  });
+
   function renderResellers(){
     const list = document.getElementById("resellersList");
+    updateResellerCount();
 
     if (data.resellers.length === 0){
       list.innerHTML = `<div class="empty-state">
@@ -3816,7 +3897,17 @@ const db = getFirestore(firebaseApp);
       return;
     }
 
-    list.innerHTML = data.resellers.map(reseller => {
+    const visibleResellers = getFilteredResellers();
+
+    if (visibleResellers.length === 0){
+      list.innerHTML = `<div class="empty-state">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+        <div>No resellers match your search or filter.</div>
+      </div>`;
+      return;
+    }
+
+    list.innerHTML = visibleResellers.map(reseller => {
       const status = reseller.status || "not-contacted";
       return `
         <div class="reseller-tile" data-id="${reseller.id}">
@@ -3887,10 +3978,9 @@ const db = getFirestore(firebaseApp);
 
       <div class="detail-row">
         <div class="status-control">
-          <div class="badge reseller-${status} status-badge-reseller" data-status="${status}">${resellerStatusLabel(status)}</div>
-          <div class="status-quick-menu">
-            ${RESELLER_STATUSES.map(s => `<div class="status-option" data-status="${s.key}">${s.label}</div>`).join("")}
-          </div>
+          <select class="reseller-status-select reseller-${status}" id="resellerDetailStatusSelect">
+            ${RESELLER_STATUSES.map(s => `<option value="${s.key}" ${s.key === status ? "selected" : ""}>${s.label}</option>`).join("")}
+          </select>
         </div>
       </div>
 
@@ -3919,26 +4009,19 @@ const db = getFirestore(firebaseApp);
   function bindResellerDetail(reseller){
     bindNotesSection(reseller, "reseller", () => openResellerDetail(reseller));
 
-    const badge = document.querySelector("#sheetContent .status-badge-reseller");
-    if (badge){
-      badge.addEventListener("click", (e) => {
-        e.stopPropagation();
-        badge.nextElementSibling.classList.toggle("show");
-      });
-      document.querySelectorAll("#sheetContent .status-option").forEach(opt => {
-        opt.addEventListener("click", (e) => {
-          e.stopPropagation();
-          try{
-            const oldStatus = reseller.status || "not-contacted";
-            reseller.status = opt.dataset.status;
-            logStatusChange(reseller, oldStatus, reseller.status, resellerStatusLabel);
-            store.save(data);
-            renderResellers();
-            openResellerDetail(reseller);
-          } catch(err){
-            showToast("Couldn't update status: " + err.message);
-          }
-        });
+    const statusSelect = document.getElementById("resellerDetailStatusSelect");
+    if (statusSelect){
+      statusSelect.addEventListener("change", () => {
+        try{
+          const oldStatus = reseller.status || "not-contacted";
+          reseller.status = statusSelect.value;
+          logStatusChange(reseller, oldStatus, reseller.status, resellerStatusLabel);
+          store.save(data);
+          renderResellers();
+          openResellerDetail(reseller);
+        } catch(err){
+          showToast("Couldn't update status: " + err.message);
+        }
       });
     }
 
