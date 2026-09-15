@@ -463,6 +463,34 @@
   .stat-value.negative{ color:var(--error) !important; }
   .stat-sub{ font-size:12px; color:var(--muted); margin-top:4px; }
 
+  .trend-chart{
+    display:flex;
+    align-items:flex-end;
+    gap:8px;
+    height:100px;
+    margin-top:8px;
+  }
+  .trend-bar-wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    height:100%;
+    justify-content:flex-end;
+    gap:5px;
+  }
+  .trend-bar{
+    width:100%;
+    max-width:28px;
+    background:var(--brass);
+    border-radius:4px 4px 0 0;
+    min-height:2px;
+  }
+  .trend-bar-label{ font-size:10px; color:var(--muted); white-space:nowrap; }
+  .trend-empty{ font-size:13px; color:var(--muted); padding:10px 0; }
+
+  .dashboard-footer-actions{ margin-top:14px; }
+
   .breakdown-row{
     display:flex;
     justify-content:space-between;
@@ -656,14 +684,14 @@
 
   .status-filter-row{
     display:flex;
+    flex-wrap:wrap;
     gap:8px;
     margin-bottom:12px;
-    overflow-x:auto;
   }
   .status-filter-chip{
-    flex:1;
+    flex:0 0 auto;
     text-align:center;
-    padding:9px 6px;
+    padding:9px 12px;
     font-size:13px;
     font-weight:600;
     border-radius:10px;
@@ -837,12 +865,39 @@
     align-items:center;
     gap:5px;
     margin-top:8px;
+    margin-right:10px;
     font-size:11.5px;
     font-weight:600;
     color:var(--brass-dark);
     text-decoration:none;
   }
   .insta-chip:hover{ text-decoration:underline; }
+  .insta-chip.whatsapp-chip{ color:var(--good); }
+
+  .repeat-customer-banner{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--brass-dark);
+    background:var(--brass-tint);
+    border-radius:9px;
+    padding:9px 11px;
+    margin-bottom:16px;
+  }
+  .repeat-customer-banner svg{ flex:0 0 auto; }
+
+  .followup-tag{
+    display:inline-block;
+    font-size:11px;
+    font-weight:600;
+    color:var(--error);
+    background:var(--error-tint);
+    border-radius:100px;
+    padding:4px 10px;
+    margin-top:8px;
+  }
 
   .order-notes-preview{
     font-size:12px;
@@ -1503,15 +1558,27 @@
         <div class="stat-label">Spent restocking</div>
         <div class="stat-value" id="statSpent">₹0</div>
       </div>
+      <div class="stat-card" id="statExpensesCard" style="cursor:pointer;">
+        <div class="stat-label">Other expenses</div>
+        <div class="stat-value" id="statExpenses">₹0</div>
+        <div class="stat-sub">tap to manage</div>
+      </div>
       <div class="stat-card">
         <div class="stat-label">Total profit</div>
         <div class="stat-value brass" id="statNet">₹0</div>
-        <div class="stat-sub">book price − restocking − postage</div>
+        <div class="stat-sub">book price − restocking − postage − expenses</div>
       </div>
       <div class="stat-card wide">
         <div class="stat-label">Orders by type</div>
         <div id="breakdownList"></div>
       </div>
+      <div class="stat-card wide">
+        <div class="stat-label">Revenue by month</div>
+        <div id="revenueTrendChart" class="trend-chart"></div>
+      </div>
+    </div>
+    <div class="dashboard-footer-actions">
+      <button type="button" class="btn ghost" id="btnExportCsv">Export data (CSV)</button>
     </div>
     <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:6px;">build 2026-09-14-c</div>
   </section>
@@ -1549,8 +1616,9 @@
     <div class="selection-bar" id="selectionBar">
       <span id="selectionCount">0 selected</span>
       <div class="selection-bar-actions">
-        <button type="button" class="btn ghost" id="btnSelectAll">Select all</button>
-        <button type="button" class="btn primary" id="btnPrintSelected">Print labels</button>
+        <button type="button" class="btn ghost" id="btnSelectAll">All</button>
+        <button type="button" class="btn ghost" id="btnBulkStatus">Status</button>
+        <button type="button" class="btn primary" id="btnPrintSelected">Print</button>
       </div>
     </div>
   </section>
@@ -1712,6 +1780,7 @@ const db = getFirestore(firebaseApp);
           items: Array.isArray(remote.items) ? remote.items : [],
           orders: Array.isArray(remote.orders) ? remote.orders : [],
           resellers: Array.isArray(remote.resellers) ? remote.resellers : [],
+          expenses: Array.isArray(remote.expenses) ? remote.expenses : [],
           profile: Object.assign({ name: "", photo: null, fromAddress: "", email: "" }, remote.profile || {})
         };
         data.profile.email = auth.currentUser ? auth.currentUser.email : data.profile.email;
@@ -1747,6 +1816,7 @@ const db = getFirestore(firebaseApp);
   let data = store.load();
   if (!data.profile) data.profile = { name: "", photo: null, fromAddress: "" };
   if (!data.resellers) data.resellers = [];
+  if (!data.expenses) data.expenses = [];
 
   // seed one example item on first run so the app isn't empty/confusing
   if (data.items.length === 0 && data.orders.length === 0 && !localStorage.getItem("authordesk_seeded")){
@@ -2014,13 +2084,16 @@ const db = getFirestore(firebaseApp);
     const wasDeducted = !!order.stockDeducted;
     const willDeduct = newStatus !== "pending";
     const field = order.specialCopy ? "authorCopyStock" : "stock";
+    const poolLabel = order.specialCopy ? "author copy stock" : "stock";
     if (item){
       if (willDeduct && !wasDeducted){
         item[field] = Math.max(0, Number(item[field] || 0) - 1);
         order.stockDeducted = true;
+        addActivityLog(item, `1 copy deducted from ${poolLabel} (order shipped)`);
       } else if (!willDeduct && wasDeducted){
         item[field] = Number(item[field] || 0) + 1;
         order.stockDeducted = false;
+        addActivityLog(item, `1 copy returned to ${poolLabel} (order reverted to pending)`);
       }
     }
     order.status = newStatus;
@@ -2125,6 +2198,25 @@ const db = getFirestore(firebaseApp);
   function logStatusChange(entity, oldStatus, newStatus, labelFn){
     if (oldStatus === newStatus) return;
     addActivityLog(entity, `Status changed from "${labelFn(oldStatus)}" to "${labelFn(newStatus)}"`);
+  }
+
+  // Live-mutates a reseller's status (used by the tile dropdown and detail view),
+  // stamping statusChangedAt so follow-up reminders know how long it's been stuck.
+  function setResellerStatus(reseller, newStatus){
+    const oldStatus = reseller.status || "not-contacted";
+    if (oldStatus === newStatus) return;
+    reseller.status = newStatus;
+    reseller.statusChangedAt = Date.now();
+    logStatusChange(reseller, oldStatus, newStatus, resellerStatusLabel);
+  }
+
+  const FOLLOWUP_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+  function resellerNeedsFollowUp(reseller){
+    const status = reseller.status || "not-contacted";
+    if (status !== "not-contacted" && status !== "contacted") return false;
+    const since = reseller.statusChangedAt || reseller.createdAt || Date.now();
+    return (Date.now() - since) > FOLLOWUP_THRESHOLD_MS;
   }
 
   function formatLogTimestamp(ts){
@@ -2298,8 +2390,12 @@ const db = getFirestore(firebaseApp);
 
         <div class="row-2">
           <div class="field">
-            <label for="orderInstagram">Instagram handle (optional)</label>
-            <input type="text" id="orderInstagram" placeholder="@username" value="${order ? escapeHtml(order.instagramHandle || "") : ""}">
+            <label for="orderInstagram">Instagram (URL or @handle, optional)</label>
+            <input type="text" id="orderInstagram" placeholder="https://instagram.com/username or @username" value="${order ? escapeHtml(order.instagramHandle || "") : ""}">
+          </div>
+          <div class="field">
+            <label for="orderWhatsapp">WhatsApp number (optional)</label>
+            <input type="text" id="orderWhatsapp" placeholder="+91 98765 43210" value="${order ? escapeHtml(order.whatsapp || "") : ""}">
           </div>
         </div>
 
@@ -2436,7 +2532,8 @@ const db = getFirestore(firebaseApp);
           id: order ? order.id : uid(),
           itemId: newItemId,
           address,
-          instagramHandle: document.getElementById("orderInstagram").value.trim().replace(/^@/, ""),
+          instagramHandle: extractInstagramHandle(document.getElementById("orderInstagram").value),
+          whatsapp: normalizePhoneDigits(document.getElementById("orderWhatsapp").value),
           handDelivery: newHandDelivery,
           specialCopy: newSpecialCopy,
           notes: order ? (order.notes || []) : [],
@@ -2462,6 +2559,7 @@ const db = getFirestore(firebaseApp);
             !!order.handDelivery !== !!record.handDelivery ||
             !!order.specialCopy !== !!record.specialCopy ||
             (order.instagramHandle || "") !== (record.instagramHandle || "") ||
+            (order.whatsapp || "") !== (record.whatsapp || "") ||
             Number(order.postageCost || 0) !== Number(record.postageCost || 0)
           );
           if (fieldsChanged) addActivityLog(record, "Order details updated");
@@ -2706,6 +2804,65 @@ const db = getFirestore(firebaseApp);
     printLabelsForOrders(selected);
   });
 
+  function bulkStatusSheetHtml(count){
+    return `
+      <div class="sheet-title">Set status</div>
+      <div class="sheet-sub">Apply a status to all ${count} selected order${count === 1 ? "" : "s"}.</div>
+      <div class="status-row" id="bulkStatusRow">
+        ${STATUSES.map(s => `<div class="status-chip" data-status="${s.key}">${s.label}</div>`).join("")}
+      </div>
+      <div class="sheet-buttons">
+        <button type="button" class="btn ghost" id="cancelBulkStatusBtn">Cancel</button>
+        <button type="button" class="btn primary" id="applyBulkStatusBtn" disabled>Apply</button>
+      </div>
+    `;
+  }
+
+  document.getElementById("btnBulkStatus").addEventListener("click", () => {
+    const selectedIds = Array.from(selectedOrderIds);
+    if (selectedIds.length === 0){
+      showToast("Select at least one order first.");
+      return;
+    }
+    openSheet(bulkStatusSheetHtml(selectedIds.length));
+    let chosenStatus = null;
+    const chips = document.querySelectorAll("#bulkStatusRow .status-chip");
+    const applyBtn = document.getElementById("applyBulkStatusBtn");
+    chips.forEach(chip => {
+      chip.addEventListener("click", () => {
+        chosenStatus = chip.dataset.status;
+        chips.forEach(c => c.classList.toggle("active", c === chip));
+        applyBtn.disabled = false;
+      });
+    });
+    document.getElementById("cancelBulkStatusBtn").addEventListener("click", closeSheet);
+    applyBtn.addEventListener("click", () => {
+      try{
+        if (!chosenStatus) return;
+        selectedIds.forEach(id => {
+          const order = data.orders.find(o => o.id === id);
+          if (!order) return;
+          const item = data.items.find(i => i.id === order.itemId);
+          const oldStatus = order.status || "pending";
+          syncStockForOrderStatus(order, item, chosenStatus);
+          logStatusChange(order, oldStatus, order.status, statusLabel);
+        });
+        store.save(data);
+        selectionMode = false;
+        selectedOrderIds.clear();
+        document.getElementById("btnToggleSelect").classList.remove("active");
+        updateSelectionBar();
+        closeSheet();
+        renderOrders();
+        renderStock();
+        renderDashboard();
+        showToast(`Updated ${selectedIds.length} order${selectedIds.length === 1 ? "" : "s"} to ${statusLabel(chosenStatus)}.`);
+      } catch(err){
+        showToast("Something went wrong updating status: " + err.message);
+      }
+    });
+  });
+
   // ---------- Shipping labels ----------
   function buildLabelHtml(order){
     const from = (data.profile.fromAddress || "").trim();
@@ -2742,6 +2899,7 @@ const db = getFirestore(firebaseApp);
       order.address,
       notesSearchText(order),
       order.instagramHandle,
+      order.whatsapp,
       item ? item.name : "",
       statusLabel(order.status || "pending"),
       cat.label,
@@ -2875,6 +3033,7 @@ const db = getFirestore(firebaseApp);
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
                 @${escapeHtml(order.instagramHandle)}
               </a>` : ""}
+              ${whatsappChipHtml(order.whatsapp)}
             </div>
             <div class="order-amount">${rupee(total)}</div>
           </div>
@@ -3008,11 +3167,14 @@ const db = getFirestore(firebaseApp);
         </div>
       </div>
 
+      ${repeatCustomerBannerHtml(order)}
+
       ${order.instagramHandle ? `
       <a class="insta-chip" href="https://instagram.com/${encodeURIComponent(order.instagramHandle)}" target="_blank" rel="noopener" style="margin-bottom:16px;">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
         @${escapeHtml(order.instagramHandle)}
       </a>` : ""}
+      ${order.whatsapp ? `<div style="margin-bottom:16px;">${whatsappChipHtml(order.whatsapp)}</div>` : ""}
 
       <div class="detail-section">
         <div class="detail-label">Name &amp; address</div>
@@ -3214,10 +3376,13 @@ const db = getFirestore(firebaseApp);
           item.mrp = mrp;
           item.deliveryCharge = deliveryCharge;
           item.purchaseDiscount = purchaseDiscount;
+          addActivityLog(item, "Item details updated");
           showToast("Item updated.");
         } else {
           const stock = Number(document.getElementById("itemStock").value) || 0;
-          data.items.push({ id: uid(), name, mrp, deliveryCharge, purchaseDiscount, stock, authorCopyStock: 0, totalSpent: 0 });
+          const newItem = { id: uid(), name, mrp, deliveryCharge, purchaseDiscount, stock, authorCopyStock: 0, totalSpent: 0, activityLog: [] };
+          addActivityLog(newItem, `Item added${stock ? " with " + stock + " starting stock" : ""}`);
+          data.items.push(newItem);
           showToast("Item added.");
         }
         store.save(data);
@@ -3376,9 +3541,11 @@ const db = getFirestore(firebaseApp);
 
             if (isAuthorCopy){
               item.authorCopyStock = Number(item.authorCopyStock || 0) + qty;
+              addActivityLog(item, `Added ${qty} author's cop${qty === 1 ? "y" : "ies"}`);
             } else {
               item.stock = Number(item.stock || 0) + qty;
               item.totalSpent = (item.totalSpent || 0) + amountPaid;
+              addActivityLog(item, `Added ${qty} cop${qty === 1 ? "y" : "ies"}${amountPaid ? " for " + rupee(amountPaid) : ""}`);
             }
             store.save(data);
             showToast(`Added ${qty} ${isAuthorCopy ? "author's copies" : "copies"} to ${item.name}${amountPaid ? " for " + rupee(amountPaid) : ""}.`);
@@ -3432,9 +3599,20 @@ const db = getFirestore(firebaseApp);
           </div>
           <div class="item-buttons">
             <button class="small-btn edit-item">Edit</button>
+            <button class="icon-btn log-icon-btn view-item-log" aria-label="View stock history">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+            </button>
           </div>
         </div>`;
     }).join("");
+
+    list.querySelectorAll(".view-item-log").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.closest(".item-card").dataset.id;
+        const item = data.items.find(i => i.id === id);
+        if (item) openActivityLog(item, item.name + " — stock history");
+      });
+    });
 
     list.querySelectorAll(".edit-item").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -3467,7 +3645,8 @@ const db = getFirestore(firebaseApp);
 
     const totalSpent = data.items.reduce((sum, i) => sum + Number(i.totalSpent || 0), 0);
     const totalPostage = data.orders.reduce((sum, o) => sum + Number(o.postageCost || 0), 0);
-    const totalProfit = totalBookPrice - totalSpent - totalPostage;
+    const totalExpenses = data.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const totalProfit = totalBookPrice - totalSpent - totalPostage - totalExpenses;
 
     document.getElementById("statRevenue").textContent = rupee(totalRevenue);
     document.getElementById("statRevenueSub").textContent = `from ${data.orders.length} order${data.orders.length === 1 ? "" : "s"}`;
@@ -3475,6 +3654,7 @@ const db = getFirestore(firebaseApp);
     document.getElementById("statStockSub").textContent = `across ${data.items.length} item${data.items.length === 1 ? "" : "s"}`;
     document.getElementById("statBookedAvailable").textContent = `${totalBooked} booked · ${totalAvailable} available`;
     document.getElementById("statSpent").textContent = rupee(totalSpent);
+    document.getElementById("statExpenses").textContent = rupee(totalExpenses);
     const netEl = document.getElementById("statNet");
     netEl.textContent = rupee(totalProfit);
     netEl.classList.toggle("negative", totalProfit < 0);
@@ -3491,7 +3671,184 @@ const db = getFirestore(firebaseApp);
     breakdown.innerHTML = entries.length === 0
       ? `<div class="breakdown-row"><span>No orders yet</span></div>`
       : entries.map(([label, count]) => `<div class="breakdown-row"><span>${escapeHtml(label)}</span><span class="count">${count}</span></div>`).join("");
+
+    renderRevenueTrend();
   }
+
+  // ---------- Revenue trend (last 6 months) ----------
+  function renderRevenueTrend(){
+    const el = document.getElementById("revenueTrendChart");
+    if (!el) return;
+
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--){
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString("en-IN", { month: "short" }), total: 0 });
+    }
+
+    data.orders.forEach(o => {
+      const d = new Date(o.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const bucket = months.find(m => m.key === key);
+      if (bucket) bucket.total += Number(o.price) + Number(o.delivery);
+    });
+
+    const max = Math.max(1, ...months.map(m => m.total));
+    if (months.every(m => m.total === 0)){
+      el.innerHTML = `<div class="trend-empty">No orders yet to chart.</div>`;
+      return;
+    }
+
+    el.innerHTML = months.map(m => {
+      const heightPct = Math.max(2, Math.round((m.total / max) * 100));
+      return `
+        <div class="trend-bar-wrap" title="${escapeHtml(m.label)}: ${rupee(m.total)}">
+          <div class="trend-bar" style="height:${heightPct}%"></div>
+          <div class="trend-bar-label">${escapeHtml(m.label)}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  document.getElementById("statExpensesCard").addEventListener("click", () => openExpenseManager());
+
+  function expenseManagerHtml(){
+    const sorted = data.expenses.slice().sort((a, b) => b.createdAt - a.createdAt);
+    const total = data.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    return `
+      <div class="sheet-title">Other expenses</div>
+      <div class="sheet-sub">Packaging, courier pickup, promotion — anything else that eats into profit. Total: ${rupee(total)}</div>
+      <div id="expensesListInner">
+        ${sorted.length === 0 ? `<div class="notes-empty">No expenses logged yet.</div>` : sorted.map(e => `
+          <div class="note-item" data-expense-id="${e.id}">
+            <div class="note-view">
+              <div class="note-text">${escapeHtml(e.description)} — ${rupee(e.amount)}</div>
+              <div class="note-meta">
+                <span class="note-date">${formatNoteDate(e.createdAt)}</span>
+                <span class="note-actions">
+                  <button type="button" class="icon-btn danger expense-delete-btn" aria-label="Delete expense">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
+                  </button>
+                </span>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="add-note-row">
+        <div class="row-2" style="margin-bottom:8px;">
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="newExpenseDesc" placeholder="Description">
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <input type="number" id="newExpenseAmount" min="0" step="1" placeholder="Amount (₹)">
+          </div>
+        </div>
+        <button type="button" class="btn ghost" id="addExpenseBtn" style="width:100%;">+ Add expense</button>
+      </div>
+      <div class="sheet-buttons" style="margin-top:14px;">
+        <button type="button" class="btn primary" id="closeExpenseManagerBtn" style="width:100%;">Done</button>
+      </div>
+    `;
+  }
+
+  function bindExpenseManager(){
+    document.getElementById("addExpenseBtn").addEventListener("click", () => {
+      try{
+        const desc = document.getElementById("newExpenseDesc").value.trim();
+        const amount = Number(document.getElementById("newExpenseAmount").value) || 0;
+        if (!desc){ showToast("Enter a description first."); return; }
+        if (!amount || amount <= 0){ showToast("Enter an amount greater than 0."); return; }
+        data.expenses.unshift({ id: uid(), description: desc, amount, createdAt: Date.now() });
+        store.save(data);
+        renderDashboard();
+        openExpenseManager();
+      } catch(err){
+        showToast("Couldn't add expense: " + err.message);
+      }
+    });
+
+    document.querySelectorAll(".expense-delete-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        try{
+          const id = btn.closest(".note-item").dataset.expenseId;
+          data.expenses = data.expenses.filter(e => e.id !== id);
+          store.save(data);
+          renderDashboard();
+          openExpenseManager();
+        } catch(err){
+          showToast("Couldn't delete expense: " + err.message);
+        }
+      });
+    });
+
+    document.getElementById("closeExpenseManagerBtn").addEventListener("click", closeSheet);
+  }
+
+  function openExpenseManager(){
+    openSheet(expenseManagerHtml());
+    bindExpenseManager();
+  }
+
+  // ---------- CSV export ----------
+  function csvEscape(value){
+    const str = String(value == null ? "" : value);
+    if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+    return str;
+  }
+
+  function exportDataAsCsv(){
+    try{
+      const lines = [];
+      lines.push("== ORDERS ==");
+      lines.push(["Name", "Address", "Item", "Price", "Delivery", "Status", "Hand delivery", "Author copy", "Instagram", "WhatsApp", "Created"].map(csvEscape).join(","));
+      data.orders.forEach(o => {
+        const item = data.items.find(i => i.id === o.itemId);
+        const name = (o.address || "").split("\n")[0] || "";
+        lines.push([
+          name, o.address, item ? item.name : "", o.price, o.delivery, statusLabel(o.status || "pending"),
+          o.handDelivery ? "Yes" : "No", o.specialCopy ? "Yes" : "No", o.instagramHandle || "", o.whatsapp || "",
+          new Date(o.createdAt).toISOString()
+        ].map(csvEscape).join(","));
+      });
+      lines.push("");
+      lines.push("== STOCK ITEMS ==");
+      lines.push(["Name", "MRP", "Delivery charge", "Stock", "Author copy stock", "Total spent"].map(csvEscape).join(","));
+      data.items.forEach(i => {
+        lines.push([i.name, i.mrp, i.deliveryCharge, i.stock, i.authorCopyStock || 0, i.totalSpent || 0].map(csvEscape).join(","));
+      });
+      lines.push("");
+      lines.push("== RESELLERS ==");
+      lines.push(["Handle", "URL", "WhatsApp", "Status", "Created"].map(csvEscape).join(","));
+      data.resellers.forEach(r => {
+        lines.push([resellerDisplayHandle(r), r.url, r.whatsapp || "", resellerStatusLabel(r.status || "not-contacted"), new Date(r.createdAt).toISOString()].map(csvEscape).join(","));
+      });
+      lines.push("");
+      lines.push("== EXPENSES ==");
+      lines.push(["Description", "Amount", "Created"].map(csvEscape).join(","));
+      data.expenses.forEach(e => {
+        lines.push([e.description, e.amount, new Date(e.createdAt).toISOString()].map(csvEscape).join(","));
+      });
+
+      const csvContent = lines.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `authordesk-export-${dateStamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Export downloaded.");
+    } catch(err){
+      showToast("Couldn't export data: " + err.message);
+    }
+  }
+
+  document.getElementById("btnExportCsv").addEventListener("click", exportDataAsCsv);
 
   // close any open status quick-menu / profile menu when tapping elsewhere
   document.addEventListener("click", () => {
@@ -3722,6 +4079,57 @@ const db = getFirestore(firebaseApp);
     return "https://instagram.com/" + handle;
   }
 
+  // Used for the Orders form's Instagram field, which stores a bare handle
+  // (not a full URL) — accepts either a pasted profile URL or a plain @handle.
+  function extractInstagramHandle(input){
+    input = (input || "").trim();
+    if (!input) return "";
+    const match = input.match(/instagram\.com\/([^/?#]+)/i);
+    if (match) return match[1].replace(/\/+$/, "");
+    return input.replace(/^@/, "");
+  }
+
+  function normalizePhoneDigits(input){
+    return String(input || "").replace(/[^0-9]/g, "");
+  }
+
+  // Finds a plausible Indian mobile number in the order's address text, so we
+  // can recognize the same customer ordering again even without a WhatsApp field.
+  function orderCustomerKey(order){
+    if (order.whatsapp) return order.whatsapp.slice(-10);
+    const text = order.address || "";
+    const match = text.match(/(?:\+?91[\s-]?)?([6-9]\d{9})\b/);
+    return match ? match[1] : null;
+  }
+
+  function findRepeatOrders(order){
+    const key = orderCustomerKey(order);
+    if (!key) return [];
+    return data.orders.filter(o => o.id !== order.id && orderCustomerKey(o) === key);
+  }
+
+  function repeatCustomerBannerHtml(order){
+    const priorOrders = findRepeatOrders(order);
+    if (priorOrders.length === 0) return "";
+    const sorted = priorOrders.slice().sort((a, b) => b.createdAt - a.createdAt);
+    const dates = sorted.map(o => formatNoteDate(o.createdAt)).join(", ");
+    return `
+      <div class="repeat-customer-banner">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h14"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H3"/></svg>
+        <span>Repeat customer — ordered ${priorOrders.length} time${priorOrders.length === 1 ? "" : "s"} before (${escapeHtml(dates)})</span>
+      </div>
+    `;
+  }
+
+  function whatsappChipHtml(digits){
+    if (!digits) return "";
+    return `
+      <a class="insta-chip whatsapp-chip" href="https://wa.me/${digits}" target="_blank" rel="noopener">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2Zm0 1.8a8.2 8.2 0 0 1 6.9 12.6l-.3.5.6 2.1-2.2-.6-.5.3A8.2 8.2 0 1 1 12 3.8Zm-2.9 3.9c-.2 0-.5 0-.7.3-.2.3-.9.9-.9 2.1 0 1.2.9 2.4 1 2.5.1.2 1.8 2.8 4.4 3.8 2.2.9 2.6.7 3.1.6.5 0 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.6-.4-.3-.1-1.7-.8-1.9-.9-.3-.1-.5-.1-.6.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5-.1-.1-.6-1.6-.9-2.1-.2-.6-.4-.5-.6-.5Z"/></svg>
+        WhatsApp
+      </a>`;
+  }
+
   function resellerDisplayHandle(reseller){
     const raw = reseller.url || "";
     const match = raw.match(/instagram\.com\/([^/?#]+)/i);
@@ -3744,6 +4152,10 @@ const db = getFirestore(firebaseApp);
         <div class="field">
           <label for="resellerUrl">Instagram page URL or @handle</label>
           <input type="text" id="resellerUrl" placeholder="https://instagram.com/username or @username" value="${reseller ? escapeHtml(reseller.url) : ""}">
+        </div>
+        <div class="field">
+          <label for="resellerWhatsapp">WhatsApp number (optional)</label>
+          <input type="text" id="resellerWhatsapp" placeholder="+91 98765 43210" value="${reseller ? escapeHtml(reseller.whatsapp || "") : ""}">
         </div>
         <div class="field">
           <label>Status</label>
@@ -3795,15 +4207,18 @@ const db = getFirestore(firebaseApp);
         const record = {
           id: reseller ? reseller.id : uid(),
           url: normalizedUrl,
+          whatsapp: normalizePhoneDigits(document.getElementById("resellerWhatsapp").value),
           status: selectedStatus,
+          statusChangedAt: reseller ? (reseller.statusChangedAt || reseller.createdAt) : Date.now(),
           notes: reseller ? (reseller.notes || []) : [],
           createdAt: reseller ? reseller.createdAt : Date.now()
         };
 
         record.activityLog = reseller ? (reseller.activityLog || []) : [];
         if (reseller){
+          if (reseller.status !== record.status) record.statusChangedAt = Date.now();
           logStatusChange(record, reseller.status, record.status, resellerStatusLabel);
-          if (reseller.url !== record.url) addActivityLog(record, "Reseller details updated");
+          if (reseller.url !== record.url || (reseller.whatsapp || "") !== (record.whatsapp || "")) addActivityLog(record, "Reseller details updated");
         } else {
           addActivityLog(record, "Reseller added");
         }
@@ -3841,6 +4256,7 @@ const db = getFirestore(firebaseApp);
     return [
       reseller.url,
       resellerDisplayHandle(reseller),
+      reseller.whatsapp,
       resellerStatusLabel(reseller.status || "not-contacted"),
       ensureNotesArray(reseller).map(n => n.text).join(" ")
     ].filter(Boolean).join(" ").toLowerCase();
@@ -3938,6 +4354,7 @@ const db = getFirestore(firebaseApp);
 
     list.innerHTML = visibleResellers.map(reseller => {
       const status = reseller.status || "not-contacted";
+      const needsFollowUp = resellerNeedsFollowUp(reseller);
       return `
         <div class="reseller-tile" data-id="${reseller.id}">
           <div class="reseller-top">
@@ -3949,6 +4366,8 @@ const db = getFirestore(firebaseApp);
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
             </button>
           </div>
+          ${reseller.whatsapp ? `<div>${whatsappChipHtml(reseller.whatsapp)}</div>` : ""}
+          ${needsFollowUp ? `<div class="followup-tag">Follow up — no update in 3+ days</div>` : ""}
           <div class="status-control">
             <select class="reseller-status-select reseller-${status}" data-status="${status}">
               ${RESELLER_STATUSES.map(s => `<option value="${s.key}" ${s.key === status ? "selected" : ""}>${s.label}</option>`).join("")}
@@ -3965,7 +4384,7 @@ const db = getFirestore(firebaseApp);
       });
     });
 
-    list.querySelectorAll(".reseller-link").forEach(link => {
+    list.querySelectorAll(".reseller-link, .whatsapp-chip").forEach(link => {
       link.addEventListener("click", (e) => e.stopPropagation());
     });
 
@@ -3977,9 +4396,7 @@ const db = getFirestore(firebaseApp);
           const id = select.closest(".reseller-tile").dataset.id;
           const reseller = data.resellers.find(r => r.id === id);
           if (!reseller) return;
-          const oldStatus = reseller.status || "not-contacted";
-          reseller.status = select.value;
-          logStatusChange(reseller, oldStatus, reseller.status, resellerStatusLabel);
+          setResellerStatus(reseller, select.value);
           store.save(data);
           renderResellers();
         } catch(err){
@@ -4018,6 +4435,12 @@ const db = getFirestore(firebaseApp);
         <div class="detail-text"><a href="${escapeHtml(reseller.url)}" target="_blank" rel="noopener">${escapeHtml(reseller.url)}</a></div>
       </div>
 
+      ${reseller.whatsapp ? `
+      <div class="detail-section">
+        <div class="detail-label">WhatsApp</div>
+        <div class="detail-text">${whatsappChipHtml(reseller.whatsapp)}</div>
+      </div>` : ""}
+
       ${notesSectionHtml(reseller, "reseller")}
 
       <div class="sheet-buttons">
@@ -4042,9 +4465,7 @@ const db = getFirestore(firebaseApp);
     if (statusSelect){
       statusSelect.addEventListener("change", () => {
         try{
-          const oldStatus = reseller.status || "not-contacted";
-          reseller.status = statusSelect.value;
-          logStatusChange(reseller, oldStatus, reseller.status, resellerStatusLabel);
+          setResellerStatus(reseller, statusSelect.value);
           store.save(data);
           renderResellers();
           openResellerDetail(reseller);
