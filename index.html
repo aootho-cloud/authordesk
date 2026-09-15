@@ -692,6 +692,7 @@
   .badge.custom{ background:#F1EEF5; color:#6B5A8A; }
   .badge.hand-delivery{ background:#EAF0F7; color:#3A5A82; }
   .badge.special-copy{ background:#F1EEF5; color:#6B5A8A; }
+  .badge.reseller-not-contacted{ background:#EDEAE3; color:var(--muted); }
   .badge.reseller-contacted{ background:#EAF0F7; color:#3A5A82; }
   .badge.reseller-responded{ background:var(--warn-tint); color:var(--warn); }
   .badge.reseller-accepted{ background:var(--good-tint); color:var(--good); }
@@ -1588,6 +1589,7 @@ const db = getFirestore(firebaseApp);
         data = {
           items: Array.isArray(remote.items) ? remote.items : [],
           orders: Array.isArray(remote.orders) ? remote.orders : [],
+          resellers: Array.isArray(remote.resellers) ? remote.resellers : [],
           profile: Object.assign({ name: "", photo: null, fromAddress: "", email: "" }, remote.profile || {})
         };
         data.profile.email = auth.currentUser ? auth.currentUser.email : data.profile.email;
@@ -1596,6 +1598,7 @@ const db = getFirestore(firebaseApp);
         renderDashboard();
         renderOrders();
         renderStock();
+        renderResellers();
       } else {
         // brand-new account: push whatever we have locally as the starting document
         await setDoc(doc(db, "users", uidForSync), data);
@@ -3359,6 +3362,7 @@ const db = getFirestore(firebaseApp);
 
   // ---------- Resellers ----------
   const RESELLER_STATUSES = [
+    { key: "not-contacted", label: "Not contacted" },
     { key: "contacted", label: "Contacted" },
     { key: "responded", label: "Responded" },
     { key: "accepted", label: "Accepted" },
@@ -3368,7 +3372,7 @@ const db = getFirestore(firebaseApp);
 
   function resellerStatusLabel(key){
     const s = RESELLER_STATUSES.find(s => s.key === key);
-    return s ? s.label : "Contacted";
+    return s ? s.label : "Not contacted";
   }
 
   function normalizeInstagramUrl(input){
@@ -3386,6 +3390,12 @@ const db = getFirestore(firebaseApp);
     return raw.startsWith("@") ? raw : "@" + raw;
   }
 
+  function resellerHandleKey(url){
+    const match = (url || "").match(/instagram\.com\/([^/?#]+)/i);
+    const handle = match ? match[1] : (url || "").replace(/^@/, "").replace(/^https?:\/\//i, "");
+    return handle.trim().toLowerCase().replace(/\/+$/, "");
+  }
+
   let resellerConfirmDeleteId = null;
 
   function resellerFormHtml(reseller){
@@ -3401,7 +3411,7 @@ const db = getFirestore(firebaseApp);
         <div class="field">
           <label>Status</label>
           <div class="filter-options" id="resellerStatusRow">
-            ${RESELLER_STATUSES.map(s => `<div class="filter-option ${((reseller ? reseller.status : "contacted") || "contacted") === s.key ? "active" : ""}" data-status="${s.key}">${s.label}</div>`).join("")}
+            ${RESELLER_STATUSES.map(s => `<div class="filter-option ${((reseller ? reseller.status : "not-contacted") || "not-contacted") === s.key ? "active" : ""}" data-status="${s.key}">${s.label}</div>`).join("")}
           </div>
         </div>
         <div class="field-hint" id="resellerFormError" style="display:none;color:var(--error);margin-bottom:12px;"></div>
@@ -3416,7 +3426,7 @@ const db = getFirestore(firebaseApp);
   function bindResellerForm(reseller){
     document.getElementById("cancelResellerBtn").addEventListener("click", closeSheet);
 
-    let selectedStatus = (reseller ? reseller.status : "contacted") || "contacted";
+    let selectedStatus = (reseller ? reseller.status : "not-contacted") || "not-contacted";
     const statusChips = document.querySelectorAll("#resellerStatusRow .filter-option");
     statusChips.forEach(chip => {
       chip.addEventListener("click", () => {
@@ -3435,9 +3445,19 @@ const db = getFirestore(firebaseApp);
           errorBox.style.display = "block";
           return;
         }
+        const normalizedUrl = normalizeInstagramUrl(rawUrl);
+        const newKey = resellerHandleKey(normalizedUrl);
+        const duplicate = data.resellers.find(r =>
+          resellerHandleKey(r.url) === newKey && (!reseller || r.id !== reseller.id)
+        );
+        if (duplicate){
+          errorBox.textContent = `Already in your list as "${resellerDisplayHandle(duplicate)}" (${resellerStatusLabel(duplicate.status)}).`;
+          errorBox.style.display = "block";
+          return;
+        }
         const record = {
           id: reseller ? reseller.id : uid(),
-          url: normalizeInstagramUrl(rawUrl),
+          url: normalizedUrl,
           status: selectedStatus,
           createdAt: reseller ? reseller.createdAt : Date.now()
         };
@@ -3480,7 +3500,7 @@ const db = getFirestore(firebaseApp);
     }
 
     list.innerHTML = data.resellers.map(reseller => {
-      const status = reseller.status || "contacted";
+      const status = reseller.status || "not-contacted";
       const isConfirming = resellerConfirmDeleteId === reseller.id;
       return `
         <div class="reseller-tile" data-id="${reseller.id}">
