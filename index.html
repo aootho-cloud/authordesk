@@ -492,6 +492,27 @@
 
   .dashboard-footer-actions{ margin-top:14px; }
 
+  .subpage-header{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:16px;
+  }
+  .subpage-header .icon-btn{
+    background:var(--paper-panel);
+    border:1px solid var(--rule);
+    border-radius:10px;
+    padding:8px;
+    color:var(--ink-soft);
+  }
+  .subpage-header .icon-btn:hover{ background:var(--brass-tint); }
+  .subpage-title{
+    font-family:'Lora', serif;
+    font-weight:600;
+    font-size:18px;
+    color:var(--ink);
+  }
+
   .breakdown-row{
     display:flex;
     justify-content:space-between;
@@ -1605,7 +1626,7 @@
       <div class="stat-card">
         <div class="stat-label">Total profit</div>
         <div class="stat-value brass" id="statNet">₹0</div>
-        <div class="stat-sub">book price − restocking − postage − expenses</div>
+        <div class="stat-sub">money in − restocking − postage − expenses</div>
       </div>
       <div class="stat-card wide">
         <div class="stat-label">Orders by type</div>
@@ -1620,6 +1641,36 @@
       <button type="button" class="btn ghost" id="btnExportCsv">Export data (CSV)</button>
     </div>
     <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:6px;">build 2026-09-14-c</div>
+  </section>
+
+  <!-- ================= OTHER EXPENSES (sub-page, no nav tab) ================= -->
+  <section class="tab-panel" id="panel-expenses">
+    <div class="subpage-header">
+      <button type="button" class="icon-btn" id="btnBackFromExpenses" aria-label="Back to Dashboard">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="subpage-title">Other expenses</div>
+    </div>
+
+    <div class="stat-card" style="margin-bottom:16px;">
+      <div class="stat-label">Total expenses</div>
+      <div class="stat-value" id="expensesPageTotal">₹0</div>
+      <div class="stat-sub">Packaging, courier pickup, shipping, promotion — anything else that eats into profit.</div>
+    </div>
+
+    <div id="expensesPageList"></div>
+
+    <div class="add-note-row" style="margin-top:6px;">
+      <div class="row-2" style="margin-bottom:8px;">
+        <div class="field" style="margin-bottom:0;">
+          <input type="text" id="newExpenseDescPage" placeholder="Description">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <input type="number" id="newExpenseAmountPage" min="0" step="1" placeholder="Amount (₹)">
+        </div>
+      </div>
+      <button type="button" class="btn primary" id="addExpenseBtnPage" style="width:100%;">+ Add expense</button>
+    </div>
   </section>
 
   <!-- ================= ORDERS ================= -->
@@ -3716,7 +3767,6 @@ const db = getFirestore(firebaseApp);
   // ---------- Dashboard ----------
   function renderDashboard(){
     const totalRevenue = data.orders.reduce((sum, o) => sum + Number(o.price) + Number(o.delivery), 0);
-    const totalBookPrice = data.orders.reduce((sum, o) => sum + Number(o.price), 0);
     const totalStock = data.items.reduce((sum, i) => sum + Number(i.stock || 0), 0);
     const totalBooked = data.items.reduce((sum, i) => sum + bookedCountForItem(i.id), 0);
     const totalAvailable = totalStock - totalBooked;
@@ -3724,7 +3774,11 @@ const db = getFirestore(firebaseApp);
     const totalSpent = data.items.reduce((sum, i) => sum + Number(i.totalSpent || 0), 0);
     const totalPostage = data.orders.reduce((sum, o) => sum + Number(o.postageCost || 0), 0);
     const totalExpenses = data.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    const totalProfit = totalBookPrice - totalSpent - totalPostage - totalExpenses;
+    // Profit = every rupee that came in from customers, minus what you spent
+    // restocking, any postage you covered for free author's copies, and
+    // whatever else you've logged under Other expenses (packaging, courier
+    // pickup, real shipping cost, promotion, etc).
+    const totalProfit = totalRevenue - totalSpent - totalPostage - totalExpenses;
 
     document.getElementById("statRevenue").textContent = rupee(totalRevenue);
     document.getElementById("statRevenueSub").textContent = `from ${data.orders.length} order${data.orders.length === 1 ? "" : "s"}`;
@@ -3790,85 +3844,74 @@ const db = getFirestore(firebaseApp);
     }).join("");
   }
 
-  document.getElementById("statExpensesCard").addEventListener("click", () => openExpenseManager());
+  document.getElementById("statExpensesCard").addEventListener("click", () => showExpensesPage());
+  document.getElementById("btnBackFromExpenses").addEventListener("click", () => switchTab("dashboard"));
 
-  function expenseManagerHtml(){
-    const sorted = data.expenses.slice().sort((a, b) => b.createdAt - a.createdAt);
-    const total = data.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    return `
-      <div class="sheet-title">Other expenses</div>
-      <div class="sheet-sub">Packaging, courier pickup, promotion — anything else that eats into profit. Total: ${rupee(total)}</div>
-      <div id="expensesListInner">
-        ${sorted.length === 0 ? `<div class="notes-empty">No expenses logged yet.</div>` : sorted.map(e => `
-          <div class="note-item" data-expense-id="${e.id}">
-            <div class="note-view">
-              <div class="note-text">${escapeHtml(e.description)} — ${rupee(e.amount)}</div>
-              <div class="note-meta">
-                <span class="note-date">${formatNoteDate(e.createdAt)}</span>
-                <span class="note-actions">
-                  <button type="button" class="icon-btn danger expense-delete-btn" aria-label="Delete expense">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
-                  </button>
-                </span>
-              </div>
-            </div>
-          </div>
-        `).join("")}
-      </div>
-      <div class="add-note-row">
-        <div class="row-2" style="margin-bottom:8px;">
-          <div class="field" style="margin-bottom:0;">
-            <input type="text" id="newExpenseDesc" placeholder="Description">
-          </div>
-          <div class="field" style="margin-bottom:0;">
-            <input type="number" id="newExpenseAmount" min="0" step="1" placeholder="Amount (₹)">
-          </div>
-        </div>
-        <button type="button" class="btn ghost" id="addExpenseBtn" style="width:100%;">+ Add expense</button>
-      </div>
-      <div class="sheet-buttons" style="margin-top:14px;">
-        <button type="button" class="btn primary" id="closeExpenseManagerBtn" style="width:100%;">Done</button>
-      </div>
-    `;
+  function showExpensesPage(){
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "panel-expenses"));
+    document.getElementById("fabAddOrder").classList.remove("show");
+    document.getElementById("fabAddReseller").classList.remove("show");
+    renderExpensesPage();
   }
 
-  function bindExpenseManager(){
-    document.getElementById("addExpenseBtn").addEventListener("click", () => {
-      try{
-        const desc = document.getElementById("newExpenseDesc").value.trim();
-        const amount = Number(document.getElementById("newExpenseAmount").value) || 0;
-        if (!desc){ showToast("Enter a description first."); return; }
-        if (!amount || amount <= 0){ showToast("Enter an amount greater than 0."); return; }
-        data.expenses.unshift({ id: uid(), description: desc, amount, createdAt: Date.now() });
-        store.save(data);
-        renderDashboard();
-        openExpenseManager();
-      } catch(err){
-        showToast("Couldn't add expense: " + err.message);
-      }
-    });
+  function renderExpensesPage(){
+    const sorted = data.expenses.slice().sort((a, b) => b.createdAt - a.createdAt);
+    const total = data.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    document.getElementById("expensesPageTotal").textContent = rupee(total);
 
-    document.querySelectorAll(".expense-delete-btn").forEach(btn => {
+    const list = document.getElementById("expensesPageList");
+    list.innerHTML = sorted.length === 0
+      ? `<div class="notes-empty">No expenses logged yet.</div>`
+      : sorted.map(e => `
+        <div class="note-item" data-expense-id="${e.id}">
+          <div class="note-view">
+            <div class="note-text">${escapeHtml(e.description)} — ${rupee(e.amount)}</div>
+            <div class="note-meta">
+              <span class="note-date">${formatNoteDate(e.createdAt)}</span>
+              <span class="note-actions">
+                <button type="button" class="icon-btn danger expense-delete-btn" aria-label="Delete expense">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
+      `).join("");
+
+    list.querySelectorAll(".expense-delete-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         try{
           const id = btn.closest(".note-item").dataset.expenseId;
           data.expenses = data.expenses.filter(e => e.id !== id);
           store.save(data);
           renderDashboard();
-          openExpenseManager();
+          renderExpensesPage();
         } catch(err){
           showToast("Couldn't delete expense: " + err.message);
         }
       });
     });
-
-    document.getElementById("closeExpenseManagerBtn").addEventListener("click", closePopup);
   }
 
-  function openExpenseManager(){
-    openPopup(expenseManagerHtml());
-    bindExpenseManager();
-  }
+  document.getElementById("addExpenseBtnPage").addEventListener("click", () => {
+    try{
+      const descEl = document.getElementById("newExpenseDescPage");
+      const amountEl = document.getElementById("newExpenseAmountPage");
+      const desc = descEl.value.trim();
+      const amount = Number(amountEl.value) || 0;
+      if (!desc){ showToast("Enter a description first."); return; }
+      if (!amount || amount <= 0){ showToast("Enter an amount greater than 0."); return; }
+      data.expenses.unshift({ id: uid(), description: desc, amount, createdAt: Date.now() });
+      store.save(data);
+      descEl.value = "";
+      amountEl.value = "";
+      renderDashboard();
+      renderExpensesPage();
+      showToast("Expense added.");
+    } catch(err){
+      showToast("Couldn't add expense: " + err.message);
+    }
+  });
 
   // ---------- CSV export ----------
   function csvEscape(value){
