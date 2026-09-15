@@ -675,6 +675,30 @@
   .selection-bar-actions{ display:flex; gap:8px; }
   .selection-bar-actions .btn{ flex:0 0 auto; padding:9px 14px; font-size:12.5px; }
 
+  .expenses-scroll-area{ padding-bottom:6px; }
+  .expense-add-footer{
+    position:sticky;
+    bottom:0;
+    left:0;
+    right:0;
+    margin:10px -16px -8px;
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    background:var(--paper-panel);
+    border-top:1px solid var(--rule);
+    box-shadow:0 -6px 16px -10px rgba(31,42,60,0.2);
+  }
+  .expense-edit-row textarea, .expense-edit-row input{
+    width:100%;
+    padding:9px 10px;
+    font-size:13.5px;
+    font-family:'Inter', sans-serif;
+    color:var(--ink);
+    background:var(--paper-panel);
+    border:1px solid var(--rule);
+    border-radius:8px;
+  }
+  .expense-edit-row .row-2{ margin-bottom:8px; }
+
   .stock-summary{
     display:flex;
     flex-direction:column;
@@ -825,7 +849,6 @@
   .badge.special-copy{ background:#F1EEF5; color:#6B5A8A; }
   .badge.reseller-not-contacted{ background:#EDEAE3; color:var(--muted); }
   .badge.reseller-contacted{ background:#EAF0F7; color:#3A5A82; }
-  .badge.reseller-responded{ background:var(--warn-tint); color:var(--warn); }
   .badge.reseller-accepted{ background:var(--good-tint); color:var(--good); }
   .badge.reseller-rejected{ background:var(--error-tint); color:var(--error); }
   .badge.reseller-on-sale{ background:var(--brass-tint); color:var(--brass-dark); }
@@ -877,7 +900,6 @@
   }
   .reseller-status-select.reseller-not-contacted{ background-color:#EDEAE3; color:var(--muted); }
   .reseller-status-select.reseller-contacted{ background-color:#EAF0F7; color:#3A5A82; }
-  .reseller-status-select.reseller-responded{ background-color:var(--warn-tint); color:var(--warn); }
   .reseller-status-select.reseller-accepted{ background-color:var(--good-tint); color:var(--good); }
   .reseller-status-select.reseller-rejected{ background-color:var(--error-tint); color:var(--error); }
   .reseller-status-select.reseller-on-sale{ background-color:var(--brass-tint); color:var(--brass-dark); }
@@ -1658,9 +1680,30 @@
       <div class="stat-sub">Packaging, courier pickup, shipping, promotion — anything else that eats into profit.</div>
     </div>
 
-    <div id="expensesPageList"></div>
+    <div class="search-row">
+      <div class="search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="expenseSearch" placeholder="Search expenses…">
+        <button class="clear-search" id="clearExpenseSearch" aria-label="Clear search" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
 
-    <div class="add-note-row" style="margin-top:6px;">
+    <div class="filter-date-row" style="margin-bottom:14px;">
+      <div class="field">
+        <label for="expenseDateFrom">From</label>
+        <input type="date" id="expenseDateFrom">
+      </div>
+      <div class="field">
+        <label for="expenseDateTo">To</label>
+        <input type="date" id="expenseDateTo">
+      </div>
+    </div>
+
+    <div class="expenses-scroll-area" id="expensesPageList"></div>
+
+    <div class="expense-add-footer">
       <div class="row-2" style="margin-bottom:8px;">
         <div class="field" style="margin-bottom:0;">
           <input type="text" id="newExpenseDescPage" placeholder="Description">
@@ -1734,7 +1777,6 @@
       <div class="status-filter-chip active" data-value="all">All<span class="chip-count" id="chipCountResellerAll"></span></div>
       <div class="status-filter-chip" data-value="not-contacted">Not contacted<span class="chip-count" id="chipCountResellerNotContacted"></span></div>
       <div class="status-filter-chip" data-value="contacted">Contacted<span class="chip-count" id="chipCountResellerContacted"></span></div>
-      <div class="status-filter-chip" data-value="responded">Responded<span class="chip-count" id="chipCountResellerResponded"></span></div>
       <div class="status-filter-chip" data-value="accepted">Accepted<span class="chip-count" id="chipCountResellerAccepted"></span></div>
       <div class="status-filter-chip" data-value="rejected">Rejected<span class="chip-count" id="chipCountResellerRejected"></span></div>
       <div class="status-filter-chip" data-value="on-sale">On sale<span class="chip-count" id="chipCountResellerOnSale"></span></div>
@@ -3854,29 +3896,129 @@ const db = getFirestore(firebaseApp);
     renderExpensesPage();
   }
 
+  // ---------- Expense search / date filter ----------
+  const expenseFilters = { search: "", dateFrom: "", dateTo: "" };
+
+  function getFilteredExpenses(){
+    const q = expenseFilters.search.trim().toLowerCase();
+    const fromTs = expenseFilters.dateFrom ? new Date(expenseFilters.dateFrom + "T00:00:00").getTime() : null;
+    const toTs = expenseFilters.dateTo ? new Date(expenseFilters.dateTo + "T23:59:59.999").getTime() : null;
+    return data.expenses.filter(e => {
+      if (q && !e.description.toLowerCase().includes(q)) return false;
+      if (fromTs !== null && e.createdAt < fromTs) return false;
+      if (toTs !== null && e.createdAt > toTs) return false;
+      return true;
+    });
+  }
+
+  const expenseSearchInput = document.getElementById("expenseSearch");
+  const clearExpenseSearchBtn = document.getElementById("clearExpenseSearch");
+  expenseSearchInput.addEventListener("input", () => {
+    expenseFilters.search = expenseSearchInput.value;
+    clearExpenseSearchBtn.style.display = expenseFilters.search ? "flex" : "none";
+    renderExpensesPage();
+  });
+  clearExpenseSearchBtn.addEventListener("click", () => {
+    expenseSearchInput.value = "";
+    expenseFilters.search = "";
+    clearExpenseSearchBtn.style.display = "none";
+    expenseSearchInput.focus();
+    renderExpensesPage();
+  });
+  document.getElementById("expenseDateFrom").addEventListener("change", (e) => {
+    expenseFilters.dateFrom = e.target.value;
+    renderExpensesPage();
+  });
+  document.getElementById("expenseDateTo").addEventListener("change", (e) => {
+    expenseFilters.dateTo = e.target.value;
+    renderExpensesPage();
+  });
+
   function renderExpensesPage(){
-    const sorted = data.expenses.slice().sort((a, b) => b.createdAt - a.createdAt);
+    // "Total expenses" always reflects everything logged, regardless of filters
     const total = data.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
     document.getElementById("expensesPageTotal").textContent = rupee(total);
 
     const list = document.getElementById("expensesPageList");
-    list.innerHTML = sorted.length === 0
-      ? `<div class="notes-empty">No expenses logged yet.</div>`
-      : sorted.map(e => `
-        <div class="note-item" data-expense-id="${e.id}">
-          <div class="note-view">
-            <div class="note-text">${escapeHtml(e.description)} — ${rupee(e.amount)}</div>
-            <div class="note-meta">
-              <span class="note-date">${formatNoteDate(e.createdAt)}</span>
-              <span class="note-actions">
-                <button type="button" class="icon-btn danger expense-delete-btn" aria-label="Delete expense">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
-                </button>
-              </span>
-            </div>
+    const visible = getFilteredExpenses().slice().sort((a, b) => b.createdAt - a.createdAt);
+
+    if (data.expenses.length === 0){
+      list.innerHTML = `<div class="notes-empty">No expenses logged yet.</div>`;
+      return;
+    }
+    if (visible.length === 0){
+      list.innerHTML = `<div class="notes-empty">No expenses match your search or date range.</div>`;
+      return;
+    }
+
+    list.innerHTML = visible.map(e => `
+      <div class="note-item" data-expense-id="${e.id}">
+        <div class="note-view">
+          <div class="note-text">${escapeHtml(e.description)} — ${rupee(e.amount)}</div>
+          <div class="note-meta">
+            <span class="note-date">${formatNoteDate(e.createdAt)}</span>
+            <span class="note-actions">
+              <button type="button" class="icon-btn expense-edit-btn" aria-label="Edit expense">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>
+              </button>
+              <button type="button" class="icon-btn danger expense-delete-btn" aria-label="Delete expense">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
+              </button>
+            </span>
           </div>
         </div>
-      `).join("");
+        <div class="note-edit-row expense-edit-row" style="display:none;">
+          <div class="row-2">
+            <input type="text" class="expense-edit-desc" value="${escapeHtml(e.description)}" placeholder="Description">
+            <input type="number" class="expense-edit-amount" min="0" step="1" value="${e.amount}" placeholder="Amount (₹)">
+          </div>
+          <div class="note-edit-actions">
+            <button type="button" class="btn ghost expense-cancel-edit">Cancel</button>
+            <button type="button" class="btn primary expense-save-edit">Save</button>
+          </div>
+        </div>
+      </div>
+    `).join("");
+
+    list.querySelectorAll(".expense-edit-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const item = btn.closest(".note-item");
+        item.querySelector(".note-view").style.display = "none";
+        item.querySelector(".expense-edit-row").style.display = "block";
+        item.querySelector(".expense-edit-desc").focus();
+      });
+    });
+
+    list.querySelectorAll(".expense-cancel-edit").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const item = btn.closest(".note-item");
+        item.querySelector(".expense-edit-row").style.display = "none";
+        item.querySelector(".note-view").style.display = "block";
+      });
+    });
+
+    list.querySelectorAll(".expense-save-edit").forEach(btn => {
+      btn.addEventListener("click", () => {
+        try{
+          const item = btn.closest(".note-item");
+          const id = item.dataset.expenseId;
+          const newDesc = item.querySelector(".expense-edit-desc").value.trim();
+          const newAmount = Number(item.querySelector(".expense-edit-amount").value) || 0;
+          if (!newDesc){ showToast("Description can't be empty."); return; }
+          if (!newAmount || newAmount <= 0){ showToast("Enter an amount greater than 0."); return; }
+          const expense = data.expenses.find(e => e.id === id);
+          if (expense){
+            expense.description = newDesc;
+            expense.amount = newAmount;
+          }
+          store.save(data);
+          renderDashboard();
+          renderExpensesPage();
+        } catch(err){
+          showToast("Couldn't save expense: " + err.message);
+        }
+      });
+    });
 
     list.querySelectorAll(".expense-delete-btn").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -4182,7 +4324,6 @@ const db = getFirestore(firebaseApp);
   const RESELLER_STATUSES = [
     { key: "not-contacted", label: "Not contacted" },
     { key: "contacted", label: "Contacted" },
-    { key: "responded", label: "Responded" },
     { key: "accepted", label: "Accepted" },
     { key: "rejected", label: "Rejected" },
     { key: "on-sale", label: "On sale" }
@@ -4437,7 +4578,7 @@ const db = getFirestore(firebaseApp);
   });
 
   function updateResellerStatusFilterCounts(){
-    const counts = { "not-contacted": 0, contacted: 0, responded: 0, accepted: 0, rejected: 0, "on-sale": 0 };
+    const counts = { "not-contacted": 0, contacted: 0, accepted: 0, rejected: 0, "on-sale": 0 };
     data.resellers.forEach(r => {
       const s = r.status || "not-contacted";
       if (counts[s] !== undefined) counts[s]++;
@@ -4445,7 +4586,6 @@ const db = getFirestore(firebaseApp);
     document.getElementById("chipCountResellerAll").textContent = `(${data.resellers.length})`;
     document.getElementById("chipCountResellerNotContacted").textContent = `(${counts["not-contacted"]})`;
     document.getElementById("chipCountResellerContacted").textContent = `(${counts.contacted})`;
-    document.getElementById("chipCountResellerResponded").textContent = `(${counts.responded})`;
     document.getElementById("chipCountResellerAccepted").textContent = `(${counts.accepted})`;
     document.getElementById("chipCountResellerRejected").textContent = `(${counts.rejected})`;
     document.getElementById("chipCountResellerOnSale").textContent = `(${counts["on-sale"]})`;
