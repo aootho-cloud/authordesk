@@ -692,6 +692,45 @@
   .badge.custom{ background:#F1EEF5; color:#6B5A8A; }
   .badge.hand-delivery{ background:#EAF0F7; color:#3A5A82; }
   .badge.special-copy{ background:#F1EEF5; color:#6B5A8A; }
+  .badge.reseller-contacted{ background:#EAF0F7; color:#3A5A82; }
+  .badge.reseller-responded{ background:var(--warn-tint); color:var(--warn); }
+  .badge.reseller-accepted{ background:var(--good-tint); color:var(--good); }
+  .badge.reseller-rejected{ background:var(--error-tint); color:var(--error); }
+  .badge.reseller-on-sale{ background:var(--brass-tint); color:var(--brass-dark); }
+
+  .reseller-tile{
+    background:var(--paper-panel);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:14px 15px;
+    margin-bottom:10px;
+  }
+  .reseller-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .reseller-link{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    font-family:'Lora', serif;
+    font-weight:600;
+    font-size:15px;
+    color:var(--ink);
+    text-decoration:none;
+    word-break:break-all;
+  }
+  .reseller-link:hover{ text-decoration:underline; }
+  .reseller-link svg{ flex:0 0 auto; color:var(--brass); }
+  .reseller-tile .badge{ margin-top:10px; }
+  .reseller-confirm-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .reseller-confirm-row span{ font-size:13px; color:var(--ink-soft); flex:1; }
 
   .insta-chip{
     display:inline-flex;
@@ -1429,6 +1468,14 @@
     <div id="itemsList"></div>
   </section>
 
+  <!-- ================= RESELLERS ================= -->
+  <section class="tab-panel" id="panel-resellers">
+    <div class="section-actions">
+      <button class="btn primary" id="btnAddReseller">+ Add reseller</button>
+    </div>
+    <div id="resellersList"></div>
+  </section>
+
 </main>
 
 <nav class="bottom-nav">
@@ -1444,6 +1491,10 @@
     <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20.5V5.2c0-1.1.9-1.7 1.9-1.4L12 6l6.1-2.2c1-.3 1.9.3 1.9 1.4v15.3c0 .8-.5 1.4-1.2 1.6L12 24l-6.8-2.2A1.8 1.8 0 0 1 4 20.5Z"/><path d="M12 6v18"/></svg>
     <span class="nav-label">Stock</span>
     <span class="nav-dot" id="stockNavDot"></span>
+  </button>
+  <button class="nav-btn" data-tab="resellers">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span class="nav-label">Resellers</span>
   </button>
 </nav>
 
@@ -1570,6 +1621,7 @@ const db = getFirestore(firebaseApp);
 
   let data = store.load();
   if (!data.profile) data.profile = { name: "", photo: null, fromAddress: "" };
+  if (!data.resellers) data.resellers = [];
 
   // seed one example item on first run so the app isn't empty/confusing
   if (data.items.length === 0 && data.orders.length === 0 && !localStorage.getItem("authordesk_seeded")){
@@ -1814,6 +1866,7 @@ const db = getFirestore(firebaseApp);
     if (tab === "dashboard") renderDashboard();
     if (tab === "orders") renderOrders();
     if (tab === "stock") renderStock();
+    if (tab === "resellers") renderResellers();
   }
 
   // ---------- Status ----------
@@ -3303,6 +3356,199 @@ const db = getFirestore(firebaseApp);
       showAuthUI();
     }
   });
+
+  // ---------- Resellers ----------
+  const RESELLER_STATUSES = [
+    { key: "contacted", label: "Contacted" },
+    { key: "responded", label: "Responded" },
+    { key: "accepted", label: "Accepted" },
+    { key: "rejected", label: "Rejected" },
+    { key: "on-sale", label: "On sale" }
+  ];
+
+  function resellerStatusLabel(key){
+    const s = RESELLER_STATUSES.find(s => s.key === key);
+    return s ? s.label : "Contacted";
+  }
+
+  function normalizeInstagramUrl(input){
+    input = (input || "").trim();
+    if (!input) return "";
+    if (/^https?:\/\//i.test(input)) return input;
+    const handle = input.replace(/^@/, "");
+    return "https://instagram.com/" + handle;
+  }
+
+  function resellerDisplayHandle(reseller){
+    const raw = reseller.url || "";
+    const match = raw.match(/instagram\.com\/([^/?#]+)/i);
+    if (match) return "@" + match[1];
+    return raw.startsWith("@") ? raw : "@" + raw;
+  }
+
+  let resellerConfirmDeleteId = null;
+
+  function resellerFormHtml(reseller){
+    const isEdit = !!reseller;
+    return `
+      <div class="sheet-title">${isEdit ? "Edit reseller" : "Add reseller"}</div>
+      <div class="sheet-sub">Track resellers you've found on Instagram.</div>
+      <form id="resellerForm" novalidate>
+        <div class="field">
+          <label for="resellerUrl">Instagram page URL or @handle</label>
+          <input type="text" id="resellerUrl" placeholder="https://instagram.com/username or @username" value="${reseller ? escapeHtml(reseller.url) : ""}">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <div class="filter-options" id="resellerStatusRow">
+            ${RESELLER_STATUSES.map(s => `<div class="filter-option ${((reseller ? reseller.status : "contacted") || "contacted") === s.key ? "active" : ""}" data-status="${s.key}">${s.label}</div>`).join("")}
+          </div>
+        </div>
+        <div class="field-hint" id="resellerFormError" style="display:none;color:var(--error);margin-bottom:12px;"></div>
+        <div class="sheet-buttons">
+          <button type="button" class="btn ghost" id="cancelResellerBtn">Cancel</button>
+          <button type="button" class="btn primary" id="saveResellerBtn">${isEdit ? "Save changes" : "Add reseller"}</button>
+        </div>
+      </form>
+    `;
+  }
+
+  function bindResellerForm(reseller){
+    document.getElementById("cancelResellerBtn").addEventListener("click", closeSheet);
+
+    let selectedStatus = (reseller ? reseller.status : "contacted") || "contacted";
+    const statusChips = document.querySelectorAll("#resellerStatusRow .filter-option");
+    statusChips.forEach(chip => {
+      chip.addEventListener("click", () => {
+        selectedStatus = chip.dataset.status;
+        statusChips.forEach(c => c.classList.toggle("active", c === chip));
+      });
+    });
+
+    document.getElementById("saveResellerBtn").addEventListener("click", () => {
+      try{
+        const errorBox = document.getElementById("resellerFormError");
+        errorBox.style.display = "none";
+        const rawUrl = document.getElementById("resellerUrl").value.trim();
+        if (!rawUrl){
+          errorBox.textContent = "Add an Instagram page URL or handle first.";
+          errorBox.style.display = "block";
+          return;
+        }
+        const record = {
+          id: reseller ? reseller.id : uid(),
+          url: normalizeInstagramUrl(rawUrl),
+          status: selectedStatus,
+          createdAt: reseller ? reseller.createdAt : Date.now()
+        };
+        if (reseller){
+          const idx = data.resellers.findIndex(r => r.id === reseller.id);
+          data.resellers[idx] = record;
+          showToast("Reseller updated.");
+        } else {
+          data.resellers.unshift(record);
+          showToast("Reseller added.");
+        }
+        store.save(data);
+        closeSheet();
+        renderResellers();
+      } catch(err){
+        showToast("Something went wrong saving: " + err.message);
+      }
+    });
+  }
+
+  document.getElementById("btnAddReseller").addEventListener("click", () => {
+    try{
+      openSheet(resellerFormHtml(null));
+      bindResellerForm(null);
+    } catch(err){
+      showToast("Couldn't open form: " + err.message);
+    }
+  });
+
+  function renderResellers(){
+    const list = document.getElementById("resellersList");
+
+    if (data.resellers.length === 0){
+      list.innerHTML = `<div class="empty-state">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+        <div>No resellers yet. Tap “Add reseller” to log the first one.</div>
+      </div>`;
+      resellerConfirmDeleteId = null;
+      return;
+    }
+
+    list.innerHTML = data.resellers.map(reseller => {
+      const status = reseller.status || "contacted";
+      const isConfirming = resellerConfirmDeleteId === reseller.id;
+      return `
+        <div class="reseller-tile" data-id="${reseller.id}">
+          ${isConfirming ? `
+          <div class="reseller-confirm-row">
+            <span>Delete this reseller?</span>
+            <button type="button" class="btn ghost reseller-cancel-delete">No</button>
+            <button type="button" class="btn primary reseller-confirm-delete" style="background:var(--error);border-color:var(--error);">Yes, delete</button>
+          </div>
+          ` : `
+          <div class="reseller-top">
+            <a class="reseller-link" href="${escapeHtml(reseller.url)}" target="_blank" rel="noopener">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
+              ${escapeHtml(resellerDisplayHandle(reseller))}
+            </a>
+            <div class="tile-actions">
+              <button class="icon-btn edit-reseller" aria-label="Edit reseller">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>
+              </button>
+              <button class="icon-btn danger delete-reseller" aria-label="Delete reseller">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
+              </button>
+            </div>
+          </div>
+          <span class="badge reseller-${status}">${resellerStatusLabel(status)}</span>
+          `}
+        </div>`;
+    }).join("");
+
+    list.querySelectorAll(".edit-reseller").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.closest(".reseller-tile").dataset.id;
+        const reseller = data.resellers.find(r => r.id === id);
+        if (!reseller) return;
+        openSheet(resellerFormHtml(reseller));
+        bindResellerForm(reseller);
+      });
+    });
+
+    list.querySelectorAll(".delete-reseller").forEach(btn => {
+      btn.addEventListener("click", () => {
+        resellerConfirmDeleteId = btn.closest(".reseller-tile").dataset.id;
+        renderResellers();
+      });
+    });
+
+    list.querySelectorAll(".reseller-cancel-delete").forEach(btn => {
+      btn.addEventListener("click", () => {
+        resellerConfirmDeleteId = null;
+        renderResellers();
+      });
+    });
+
+    list.querySelectorAll(".reseller-confirm-delete").forEach(btn => {
+      btn.addEventListener("click", () => {
+        try{
+          const id = btn.closest(".reseller-tile").dataset.id;
+          data.resellers = data.resellers.filter(r => r.id !== id);
+          resellerConfirmDeleteId = null;
+          store.save(data);
+          renderResellers();
+          showToast("Reseller deleted.");
+        } catch(err){
+          showToast("Something went wrong deleting: " + err.message);
+        }
+      });
+    });
+  }
 
   // ---------- Init ----------
   renderDashboard();
