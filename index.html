@@ -1573,13 +1573,13 @@
     <div class="reseller-count" id="resellerCount"></div>
 
     <div class="status-filter-row" id="resellerStatusFilterRow">
-      <div class="status-filter-chip active" data-value="all">All</div>
-      <div class="status-filter-chip" data-value="not-contacted">Not contacted</div>
-      <div class="status-filter-chip" data-value="contacted">Contacted</div>
-      <div class="status-filter-chip" data-value="responded">Responded</div>
-      <div class="status-filter-chip" data-value="accepted">Accepted</div>
-      <div class="status-filter-chip" data-value="rejected">Rejected</div>
-      <div class="status-filter-chip" data-value="on-sale">On sale</div>
+      <div class="status-filter-chip active" data-value="all">All<span class="chip-count" id="chipCountResellerAll"></span></div>
+      <div class="status-filter-chip" data-value="not-contacted">Not contacted<span class="chip-count" id="chipCountResellerNotContacted"></span></div>
+      <div class="status-filter-chip" data-value="contacted">Contacted<span class="chip-count" id="chipCountResellerContacted"></span></div>
+      <div class="status-filter-chip" data-value="responded">Responded<span class="chip-count" id="chipCountResellerResponded"></span></div>
+      <div class="status-filter-chip" data-value="accepted">Accepted<span class="chip-count" id="chipCountResellerAccepted"></span></div>
+      <div class="status-filter-chip" data-value="rejected">Rejected<span class="chip-count" id="chipCountResellerRejected"></span></div>
+      <div class="status-filter-chip" data-value="on-sale">On sale<span class="chip-count" id="chipCountResellerOnSale"></span></div>
     </div>
 
     <div class="search-row">
@@ -3846,11 +3846,24 @@ const db = getFirestore(firebaseApp);
     ].filter(Boolean).join(" ").toLowerCase();
   }
 
+  // Strips everything but letters/digits, so a search for "pageturner92" still
+  // finds "@page.turner_92" — Instagram handles are full of dots/underscores
+  // that people won't always bother typing when searching.
+  function normalizeSearchText(str){
+    return String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
   function getFilteredResellers(){
     const q = resellerFilters.search.trim().toLowerCase();
+    const qNormalized = normalizeSearchText(q);
     return data.resellers.filter(reseller => {
       if (resellerFilters.status !== "all" && (reseller.status || "not-contacted") !== resellerFilters.status) return false;
-      if (q && !resellerSearchHaystack(reseller).includes(q)) return false;
+      if (q){
+        const haystack = resellerSearchHaystack(reseller);
+        const matchesExact = haystack.includes(q);
+        const matchesNormalized = qNormalized && normalizeSearchText(haystack).includes(qNormalized);
+        if (!matchesExact && !matchesNormalized) return false;
+      }
       return true;
     });
   }
@@ -3885,9 +3898,25 @@ const db = getFirestore(firebaseApp);
     });
   });
 
+  function updateResellerStatusFilterCounts(){
+    const counts = { "not-contacted": 0, contacted: 0, responded: 0, accepted: 0, rejected: 0, "on-sale": 0 };
+    data.resellers.forEach(r => {
+      const s = r.status || "not-contacted";
+      if (counts[s] !== undefined) counts[s]++;
+    });
+    document.getElementById("chipCountResellerAll").textContent = `(${data.resellers.length})`;
+    document.getElementById("chipCountResellerNotContacted").textContent = `(${counts["not-contacted"]})`;
+    document.getElementById("chipCountResellerContacted").textContent = `(${counts.contacted})`;
+    document.getElementById("chipCountResellerResponded").textContent = `(${counts.responded})`;
+    document.getElementById("chipCountResellerAccepted").textContent = `(${counts.accepted})`;
+    document.getElementById("chipCountResellerRejected").textContent = `(${counts.rejected})`;
+    document.getElementById("chipCountResellerOnSale").textContent = `(${counts["on-sale"]})`;
+  }
+
   function renderResellers(){
     const list = document.getElementById("resellersList");
     updateResellerCount();
+    updateResellerStatusFilterCounts();
 
     if (data.resellers.length === 0){
       list.innerHTML = `<div class="empty-state">
