@@ -354,6 +354,21 @@
     color:var(--muted);
     margin-bottom:10px;
   }
+
+  .activity-log-list{
+    max-height:50vh;
+    overflow-y:auto;
+    margin-bottom:18px;
+  }
+  .activity-log-item{
+    padding:10px 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .activity-log-item:last-child{ border-bottom:none; }
+  .activity-log-text{ font-size:13.5px; color:var(--ink); line-height:1.45; }
+  .activity-log-date{ font-size:11px; color:var(--muted); margin-top:3px; }
+  .log-icon-btn{ color:var(--muted); }
+  .log-icon-btn:hover{ color:var(--ink); }
   .note-item{
     background:var(--paper);
     border:1px solid var(--rule);
@@ -786,6 +801,29 @@
   .reseller-link svg{ flex:0 0 auto; color:var(--brass); }
   .reseller-tile .status-control{ margin-top:10px; }
   .reseller-tile .status-badge-reseller{ cursor:pointer; }
+
+  .reseller-status-select{
+    appearance:none;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    border:none;
+    border-radius:100px;
+    padding:5px 24px 5px 11px;
+    font-size:11px;
+    font-family:'Inter', sans-serif;
+    font-weight:600;
+    cursor:pointer;
+    background-repeat:no-repeat;
+    background-position:right 9px center;
+    background-size:9px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+  .reseller-status-select.reseller-not-contacted{ background-color:#EDEAE3; color:var(--muted); }
+  .reseller-status-select.reseller-contacted{ background-color:#EAF0F7; color:#3A5A82; }
+  .reseller-status-select.reseller-responded{ background-color:var(--warn-tint); color:var(--warn); }
+  .reseller-status-select.reseller-accepted{ background-color:var(--good-tint); color:var(--good); }
+  .reseller-status-select.reseller-rejected{ background-color:var(--error-tint); color:var(--error); }
+  .reseller-status-select.reseller-on-sale{ background-color:var(--brass-tint); color:var(--brass-dark); }
 
   .insta-chip{
     display:inline-flex;
@@ -2048,6 +2086,53 @@ const db = getFirestore(firebaseApp);
     }
   }
 
+  // ---------- Activity log (shared by orders and resellers) ----------
+  // Records creation, status changes, and edits — never notes (those have their own log/UI).
+  function addActivityLog(entity, text){
+    if (!Array.isArray(entity.activityLog)) entity.activityLog = [];
+    entity.activityLog.unshift({ id: uid(), text, timestamp: Date.now() });
+  }
+
+  function logStatusChange(entity, oldStatus, newStatus, labelFn){
+    if (oldStatus === newStatus) return;
+    addActivityLog(entity, `Status changed from "${labelFn(oldStatus)}" to "${labelFn(newStatus)}"`);
+  }
+
+  function formatLogTimestamp(ts){
+    try{
+      const d = new Date(ts);
+      const datePart = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+      const timePart = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      return `${datePart} · ${timePart}`;
+    } catch(e){
+      return "";
+    }
+  }
+
+  function activityLogHtml(entity, title){
+    const log = Array.isArray(entity.activityLog) ? entity.activityLog : [];
+    return `
+      <div class="sheet-title">${escapeHtml(title)}</div>
+      <div class="sheet-sub">Activity log</div>
+      <div class="activity-log-list">
+        ${log.length === 0 ? `<div class="notes-empty">No activity yet.</div>` : log.map(entry => `
+          <div class="activity-log-item">
+            <div class="activity-log-text">${escapeHtml(entry.text)}</div>
+            <div class="activity-log-date">${formatLogTimestamp(entry.timestamp)}</div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="sheet-buttons">
+        <button type="button" class="btn primary" id="activityLogCloseBtn" style="width:100%;">Close</button>
+      </div>
+    `;
+  }
+
+  function openActivityLog(entity, title){
+    openSheet(activityLogHtml(entity, title));
+    document.getElementById("activityLogCloseBtn").addEventListener("click", closeSheet);
+  }
+
   function notesSectionHtml(entity, idPrefix){
     const notes = ensureNotesArray(entity);
     return `
@@ -2336,6 +2421,24 @@ const db = getFirestore(firebaseApp);
 
         const newItem = data.items.find(i => i.id === newItemId);
         syncStockForOrderStatus(record, newItem, selectedStatus);
+
+        record.activityLog = order ? (order.activityLog || []) : [];
+        if (order){
+          logStatusChange(record, order.status, record.status, statusLabel);
+          const fieldsChanged = (
+            order.address !== record.address ||
+            order.itemId !== record.itemId ||
+            Number(order.price) !== Number(record.price) ||
+            Number(order.delivery) !== Number(record.delivery) ||
+            !!order.handDelivery !== !!record.handDelivery ||
+            !!order.specialCopy !== !!record.specialCopy ||
+            (order.instagramHandle || "") !== (record.instagramHandle || "") ||
+            Number(order.postageCost || 0) !== Number(record.postageCost || 0)
+          );
+          if (fieldsChanged) addActivityLog(record, "Order details updated");
+        } else {
+          addActivityLog(record, "Order created");
+        }
 
         if (order){
           const idx = data.orders.findIndex(o => o.id === order.id);
@@ -2757,6 +2860,9 @@ const db = getFirestore(firebaseApp);
           <div class="tile-footer">
             <div style="font-size:11.5px;color:var(--muted);">${item ? escapeHtml(item.name) : "—"}</div>
             <div class="tile-actions">
+              <button class="icon-btn log-icon-btn view-order-log" aria-label="View activity log">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+              </button>
               ${!order.handDelivery ? `
               <button class="icon-btn print-order" aria-label="Print shipping label">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z"/></svg>
@@ -2807,6 +2913,17 @@ const db = getFirestore(firebaseApp);
       });
     });
 
+    list.querySelectorAll(".view-order-log").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.closest(".order-tile").dataset.id;
+        const order = data.orders.find(o => o.id === id);
+        if (!order) return;
+        const lines = order.address.split("\n").map(l => l.trim()).filter(Boolean);
+        openActivityLog(order, lines[0] || "Order activity");
+      });
+    });
+
     list.querySelectorAll(".status-badge").forEach(badge => {
       badge.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2825,7 +2942,9 @@ const db = getFirestore(firebaseApp);
           const order = data.orders.find(o => o.id === id);
           if (!order) return;
           const item = data.items.find(i => i.id === order.itemId);
+          const oldStatus = order.status || "pending";
           syncStockForOrderStatus(order, item, option.dataset.status);
+          logStatusChange(order, oldStatus, order.status, statusLabel);
           store.save(data);
           renderOrders();
           renderStock();
@@ -2912,7 +3031,9 @@ const db = getFirestore(firebaseApp);
           e.stopPropagation();
           try{
             const item = data.items.find(i => i.id === order.itemId);
+            const oldStatus = order.status || "pending";
             syncStockForOrderStatus(order, item, opt.dataset.status);
+            logStatusChange(order, oldStatus, order.status, statusLabel);
             store.save(data);
             renderOrders();
             renderStock();
@@ -3649,6 +3770,15 @@ const db = getFirestore(firebaseApp);
           notes: reseller ? (reseller.notes || []) : [],
           createdAt: reseller ? reseller.createdAt : Date.now()
         };
+
+        record.activityLog = reseller ? (reseller.activityLog || []) : [];
+        if (reseller){
+          logStatusChange(record, reseller.status, record.status, resellerStatusLabel);
+          if (reseller.url !== record.url) addActivityLog(record, "Reseller details updated");
+        } else {
+          addActivityLog(record, "Reseller added");
+        }
+
         if (reseller){
           const idx = data.resellers.findIndex(r => r.id === reseller.id);
           data.resellers[idx] = record;
@@ -3695,12 +3825,14 @@ const db = getFirestore(firebaseApp);
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none"/></svg>
               ${escapeHtml(resellerDisplayHandle(reseller))}
             </a>
+            <button class="icon-btn log-icon-btn view-reseller-log" aria-label="View activity log">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+            </button>
           </div>
           <div class="status-control">
-            <div class="badge reseller-${status} status-badge-reseller" data-status="${status}">${resellerStatusLabel(status)}</div>
-            <div class="status-quick-menu">
-              ${RESELLER_STATUSES.map(s => `<div class="status-option" data-status="${s.key}">${s.label}</div>`).join("")}
-            </div>
+            <select class="reseller-status-select reseller-${status}" data-status="${status}">
+              ${RESELLER_STATUSES.map(s => `<option value="${s.key}" ${s.key === status ? "selected" : ""}>${s.label}</option>`).join("")}
+            </select>
           </div>
         </div>`;
     }).join("");
@@ -3717,29 +3849,31 @@ const db = getFirestore(firebaseApp);
       link.addEventListener("click", (e) => e.stopPropagation());
     });
 
-    list.querySelectorAll(".status-badge-reseller").forEach(badge => {
-      badge.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const menu = badge.nextElementSibling;
-        const alreadyOpen = menu.classList.contains("show");
-        document.querySelectorAll(".status-quick-menu.show").forEach(m => m.classList.remove("show"));
-        if (!alreadyOpen) menu.classList.add("show");
-      });
-    });
-
-    list.querySelectorAll(".reseller-tile .status-option").forEach(option => {
-      option.addEventListener("click", (e) => {
+    list.querySelectorAll(".reseller-status-select").forEach(select => {
+      select.addEventListener("click", (e) => e.stopPropagation());
+      select.addEventListener("change", (e) => {
         e.stopPropagation();
         try{
-          const id = option.closest(".reseller-tile").dataset.id;
+          const id = select.closest(".reseller-tile").dataset.id;
           const reseller = data.resellers.find(r => r.id === id);
           if (!reseller) return;
-          reseller.status = option.dataset.status;
+          const oldStatus = reseller.status || "not-contacted";
+          reseller.status = select.value;
+          logStatusChange(reseller, oldStatus, reseller.status, resellerStatusLabel);
           store.save(data);
           renderResellers();
         } catch(err){
           showToast("Couldn't update status: " + err.message);
         }
+      });
+    });
+
+    list.querySelectorAll(".view-reseller-log").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.closest(".reseller-tile").dataset.id;
+        const reseller = data.resellers.find(r => r.id === id);
+        if (reseller) openActivityLog(reseller, resellerDisplayHandle(reseller));
       });
     });
   }
@@ -3795,7 +3929,9 @@ const db = getFirestore(firebaseApp);
         opt.addEventListener("click", (e) => {
           e.stopPropagation();
           try{
+            const oldStatus = reseller.status || "not-contacted";
             reseller.status = opt.dataset.status;
+            logStatusChange(reseller, oldStatus, reseller.status, resellerStatusLabel);
             store.save(data);
             renderResellers();
             openResellerDetail(reseller);
