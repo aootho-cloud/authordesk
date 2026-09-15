@@ -467,7 +467,7 @@
     display:flex;
     align-items:flex-end;
     gap:8px;
-    height:100px;
+    height:130px;
     margin-top:8px;
   }
   .trend-bar-wrap{
@@ -486,6 +486,7 @@
     border-radius:4px 4px 0 0;
     min-height:2px;
   }
+  .trend-bar-value{ font-size:10px; font-weight:600; color:var(--ink-soft); white-space:nowrap; }
   .trend-bar-label{ font-size:10px; color:var(--muted); white-space:nowrap; }
   .trend-empty{ font-size:13px; color:var(--muted); padding:10px 0; }
 
@@ -1148,6 +1149,44 @@
     margin:0 auto 16px;
   }
 
+  /* ---------- Compact popup (centered modal, for lightweight utilities) ---------- */
+  .popup-overlay{
+    position:absolute; inset:0;
+    background:rgba(31,42,60,0.36);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    z-index:25;
+  }
+  .popup-overlay.show{ display:flex; }
+  .popup-card{
+    position:relative;
+    background:var(--paper-panel);
+    width:100%;
+    max-width:340px;
+    max-height:80vh;
+    overflow-y:auto;
+    border-radius:18px;
+    padding:24px 20px 20px;
+    animation:popupIn .18s ease;
+  }
+  @keyframes popupIn{ from{ transform:scale(0.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .popup-close{
+    position:absolute;
+    top:14px; right:14px;
+    background:var(--paper);
+    border:1px solid var(--rule);
+    border-radius:50%;
+    width:28px; height:28px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--muted);
+    cursor:pointer;
+  }
+  .popup-close:hover{ color:var(--ink); background:var(--brass-tint); }
+
   .sheet-title{
     font-family:'Lora', serif;
     font-weight:600;
@@ -1701,6 +1740,16 @@
   </div>
 </div>
 
+<!-- ================= POPUP (compact, centered — for lightweight utilities) ================= -->
+<div class="popup-overlay" id="popupOverlay">
+  <div class="popup-card" id="popupCard">
+    <button type="button" class="popup-close" id="popupCloseBtn" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div id="popupContent"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 </div><!-- /#appRoot -->
@@ -1830,6 +1879,16 @@ const db = getFirestore(firebaseApp);
     const num = Number(n || 0);
     const sign = num < 0 ? "-" : "";
     return sign + "₹" + Math.abs(num).toLocaleString("en-IN");
+  }
+
+  // Short form for tight spaces like chart bar labels — ₹1.2k instead of ₹1,200
+  function compactRupee(n){
+    const num = Number(n || 0);
+    const sign = num < 0 ? "-" : "";
+    const abs = Math.abs(num);
+    if (abs >= 100000) return sign + "₹" + (abs / 100000).toFixed(abs % 100000 === 0 ? 0 : 1) + "L";
+    if (abs >= 1000) return sign + "₹" + (abs / 1000).toFixed(abs % 1000 === 0 ? 0 : 1) + "k";
+    return sign + "₹" + abs;
   }
 
   // ---------- Profile ----------
@@ -2057,7 +2116,7 @@ const db = getFirestore(firebaseApp);
   function switchTab(tab){
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
     document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + tab));
-    document.getElementById("fabAddOrder").classList.toggle("show", tab === "orders");
+    document.getElementById("fabAddOrder").classList.toggle("show", tab === "orders" && !selectionMode);
     document.getElementById("fabAddReseller").classList.toggle("show", tab === "resellers");
     if (tab === "dashboard") renderDashboard();
     if (tab === "orders") renderOrders();
@@ -2151,6 +2210,23 @@ const db = getFirestore(firebaseApp);
     sheetContent.innerHTML = "";
   }
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeSheet(); });
+
+  // ---------- Popup (compact centered modal — distinct from the bottom sheet,
+  // used for short utilities like the expense manager so they don't feel like
+  // a full-screen page) ----------
+  const popupOverlay = document.getElementById("popupOverlay");
+  const popupContent = document.getElementById("popupContent");
+
+  function openPopup(html){
+    popupContent.innerHTML = html;
+    popupOverlay.classList.add("show");
+  }
+  function closePopup(){
+    popupOverlay.classList.remove("show");
+    popupContent.innerHTML = "";
+  }
+  popupOverlay.addEventListener("click", (e) => { if (e.target === popupOverlay) closePopup(); });
+  document.getElementById("popupCloseBtn").addEventListener("click", closePopup);
 
   function itemOptions(selectedId){
     return data.items.map(it =>
@@ -2773,6 +2849,8 @@ const db = getFirestore(firebaseApp);
     const bar = document.getElementById("selectionBar");
     bar.classList.toggle("show", selectionMode);
     document.getElementById("selectionCount").textContent = `${selectedOrderIds.size} selected`;
+    // the floating add-order button would otherwise sit on top of the bar's buttons
+    document.getElementById("fabAddOrder").classList.toggle("show", !selectionMode && document.getElementById("panel-orders").classList.contains("active"));
   }
 
   document.getElementById("btnToggleSelect").addEventListener("click", () => {
@@ -3704,6 +3782,7 @@ const db = getFirestore(firebaseApp);
       const heightPct = Math.max(2, Math.round((m.total / max) * 100));
       return `
         <div class="trend-bar-wrap" title="${escapeHtml(m.label)}: ${rupee(m.total)}">
+          <div class="trend-bar-value">${compactRupee(m.total)}</div>
           <div class="trend-bar" style="height:${heightPct}%"></div>
           <div class="trend-bar-label">${escapeHtml(m.label)}</div>
         </div>
@@ -3783,11 +3862,11 @@ const db = getFirestore(firebaseApp);
       });
     });
 
-    document.getElementById("closeExpenseManagerBtn").addEventListener("click", closeSheet);
+    document.getElementById("closeExpenseManagerBtn").addEventListener("click", closePopup);
   }
 
   function openExpenseManager(){
-    openSheet(expenseManagerHtml());
+    openPopup(expenseManagerHtml());
     bindExpenseManager();
   }
 
