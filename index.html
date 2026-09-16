@@ -1426,12 +1426,32 @@
     }
     .print-label{
       display:flex;
+      flex-direction:column;
       border:1.5px solid #333;
       border-radius:2mm;
       break-inside:avoid;
       page-break-inside:avoid;
       font-family:'Inter', system-ui, sans-serif;
       color:#111;
+    }
+    .print-label .label-customer-id{
+      padding:4mm 6mm 3mm;
+      border-bottom:1.5px solid #333;
+      font-size:15pt;
+      font-weight:800;
+      letter-spacing:0.02em;
+    }
+    .print-label .label-customer-id .cid-tag{
+      font-size:8pt;
+      font-weight:700;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      color:#777;
+      display:block;
+      margin-bottom:1mm;
+    }
+    .print-label .label-columns{
+      display:flex;
       min-height:32mm;
     }
     .print-label .label-side{
@@ -2041,6 +2061,12 @@ const db = getFirestore(firebaseApp);
           <textarea id="profileFromAddress" placeholder="Alisha Unni Thomas&#10;12 MG Road, Kochi&#10;Kerala 682001&#10;+91 98765 43210">${escapeHtml(data.profile.fromAddress || "")}</textarea>
         </div>
 
+        <div class="field">
+          <label for="profileCustomerId">Customer ID (Postal)</label>
+          <input type="text" id="profileCustomerId" placeholder="e.g. AD-2026-004821" value="${escapeHtml(data.profile.customerId || "")}">
+          <div class="field-hint">Printed on shipping labels, above the From/To addresses.</div>
+        </div>
+
         <div class="account-email-row">
           <div>
             <div class="email-label">Email</div>
@@ -2205,6 +2231,7 @@ const db = getFirestore(firebaseApp);
       try{
         data.profile.name = document.getElementById("profileName").value.trim();
         data.profile.fromAddress = document.getElementById("profileFromAddress").value.trim();
+        data.profile.customerId = document.getElementById("profileCustomerId").value.trim();
         if (draftPhoto) data.profile.photo = draftPhoto;
         store.save(data);
         updateHeaderAvatar();
@@ -3058,15 +3085,23 @@ const db = getFirestore(firebaseApp);
   function buildLabelHtml(order){
     const from = (data.profile.fromAddress || "").trim();
     const to = (order.address || "").trim();
+    const customerId = (data.profile.customerId || "").trim();
     return `
       <div class="print-label">
-        <div class="label-side from-side">
-          <div class="label-tag">From</div>
-          <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
-        </div>
-        <div class="label-side to-side">
-          <div class="label-tag">To</div>
-          <div class="label-block">${escapeHtml(to)}</div>
+        ${customerId ? `
+        <div class="label-customer-id">
+          <span class="cid-tag">Customer ID</span>
+          ${escapeHtml(customerId)}
+        </div>` : ""}
+        <div class="label-columns">
+          <div class="label-side from-side">
+            <div class="label-tag">From</div>
+            <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
+          </div>
+          <div class="label-side to-side">
+            <div class="label-tag">To</div>
+            <div class="label-block">${escapeHtml(to)}</div>
+          </div>
         </div>
       </div>
     `;
