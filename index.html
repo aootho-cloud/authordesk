@@ -728,6 +728,14 @@
     margin-bottom:12px;
   }
 
+  .results-count{
+    font-size:12px;
+    font-weight:600;
+    color:var(--muted);
+    margin-bottom:10px;
+  }
+  .results-count:empty{ display:none; }
+
   .status-filter-row{
     display:flex;
     flex-wrap:wrap;
@@ -1701,6 +1709,8 @@
       </div>
     </div>
 
+    <div class="results-count" id="expenseResultsCount"></div>
+
     <div class="expenses-scroll-area" id="expensesPageList"></div>
 
     <div class="expense-add-footer">
@@ -1721,6 +1731,7 @@
     <div class="status-filter-row" id="orderStatusFilterRow">
       <div class="status-filter-chip active" data-value="all">All<span class="chip-count" id="chipCountAll"></span></div>
       <div class="status-filter-chip" data-value="pending">Pending<span class="chip-count" id="chipCountPending"></span></div>
+      <div class="status-filter-chip" data-value="packed">Packed<span class="chip-count" id="chipCountPacked"></span></div>
       <div class="status-filter-chip" data-value="sent">Sent<span class="chip-count" id="chipCountSent"></span></div>
       <div class="status-filter-chip" data-value="received">Received<span class="chip-count" id="chipCountReceived"></span></div>
     </div>
@@ -1743,6 +1754,8 @@
     </div>
 
     <div id="orderStockSummary" class="stock-summary"></div>
+
+    <div class="results-count" id="orderResultsCount"></div>
 
     <div id="ordersList"></div>
 
@@ -1791,6 +1804,8 @@
         </button>
       </div>
     </div>
+
+    <div class="results-count" id="resellerResultsCount"></div>
 
     <div id="resellersList"></div>
   </section>
@@ -2220,6 +2235,7 @@ const db = getFirestore(firebaseApp);
   // ---------- Status ----------
   const STATUSES = [
     { key: "pending", label: "Pending" },
+    { key: "packed", label: "Packed" },
     { key: "sent", label: "Sent" },
     { key: "received", label: "Received" }
   ];
@@ -2229,12 +2245,16 @@ const db = getFirestore(firebaseApp);
   }
 
   // Keeps an order's stockDeducted flag and the item's physical stock count in sync
-  // with its status. "pending" = still physically in hand (booked, not yet shipped).
+  // with its status. "pending"/"packed" = still physically in hand (booked, not yet shipped).
   // "sent"/"received" = physically given away, so it's deducted from stock exactly once.
   // Author's-copy orders draw from the separate authorCopyStock pool instead of stock.
+  function isShippedStatus(status){
+    return status === "sent" || status === "received";
+  }
+
   function syncStockForOrderStatus(order, item, newStatus){
     const wasDeducted = !!order.stockDeducted;
-    const willDeduct = newStatus !== "pending";
+    const willDeduct = isShippedStatus(newStatus);
     const field = order.specialCopy ? "authorCopyStock" : "stock";
     const poolLabel = order.specialCopy ? "author copy stock" : "stock";
     if (item){
@@ -2245,18 +2265,18 @@ const db = getFirestore(firebaseApp);
       } else if (!willDeduct && wasDeducted){
         item[field] = Number(item[field] || 0) + 1;
         order.stockDeducted = false;
-        addActivityLog(item, `1 copy returned to ${poolLabel} (order reverted to pending)`);
+        addActivityLog(item, `1 copy returned to ${poolLabel} (order reverted to ${statusLabel(newStatus).toLowerCase()})`);
       }
     }
     order.status = newStatus;
   }
 
   function bookedCountForItem(itemId){
-    return data.orders.filter(o => o.itemId === itemId && !o.specialCopy && (o.status || "pending") === "pending").length;
+    return data.orders.filter(o => o.itemId === itemId && !o.specialCopy && !isShippedStatus(o.status || "pending")).length;
   }
 
   function authorCopyBookedCountForItem(itemId){
-    return data.orders.filter(o => o.itemId === itemId && o.specialCopy && (o.status || "pending") === "pending").length;
+    return data.orders.filter(o => o.itemId === itemId && o.specialCopy && !isShippedStatus(o.status || "pending")).length;
   }
 
   // ---------- Categorisation ----------
@@ -3141,7 +3161,7 @@ const db = getFirestore(firebaseApp);
   }
 
   function updateStatusFilterCounts(){
-    const counts = { pending: 0, sent: 0, received: 0 };
+    const counts = { pending: 0, packed: 0, sent: 0, received: 0 };
     data.orders.forEach(o => {
       const s = o.status || "pending";
       if (counts[s] !== undefined) counts[s]++;
@@ -3149,8 +3169,13 @@ const db = getFirestore(firebaseApp);
     const all = data.orders.length;
     document.getElementById("chipCountAll").textContent = `(${all})`;
     document.getElementById("chipCountPending").textContent = `(${counts.pending})`;
+    document.getElementById("chipCountPacked").textContent = `(${counts.packed})`;
     document.getElementById("chipCountSent").textContent = `(${counts.sent})`;
     document.getElementById("chipCountReceived").textContent = `(${counts.received})`;
+  }
+
+  function anyOrderFilterActive(){
+    return orderFiltersActive() || orderFilters.status !== "all" || !!orderFilters.search.trim();
   }
 
   function renderOrders(){
@@ -3158,7 +3183,10 @@ const db = getFirestore(firebaseApp);
     renderStockSummary();
     updateStatusFilterCounts();
 
+    const resultsCountEl = document.getElementById("orderResultsCount");
+
     if (data.orders.length === 0){
+      resultsCountEl.textContent = "";
       list.innerHTML = `<div class="empty-state">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
         <div>No orders yet. Tap “Add order” to log your first one.</div>
@@ -3167,6 +3195,9 @@ const db = getFirestore(firebaseApp);
     }
 
     const visibleOrders = getFilteredSortedOrders();
+    resultsCountEl.textContent = anyOrderFilterActive()
+      ? `${visibleOrders.length} result${visibleOrders.length === 1 ? "" : "s"} showing`
+      : "";
 
     if (visibleOrders.length === 0){
       list.innerHTML = `<div class="empty-state">
@@ -3940,12 +3971,20 @@ const db = getFirestore(firebaseApp);
     document.getElementById("expensesPageTotal").textContent = rupee(total);
 
     const list = document.getElementById("expensesPageList");
+    const resultsCountEl = document.getElementById("expenseResultsCount");
     const visible = getFilteredExpenses().slice().sort((a, b) => b.createdAt - a.createdAt);
+    const expenseFilterActive = !!expenseFilters.search.trim() || !!expenseFilters.dateFrom || !!expenseFilters.dateTo;
 
     if (data.expenses.length === 0){
+      resultsCountEl.textContent = "";
       list.innerHTML = `<div class="notes-empty">No expenses logged yet.</div>`;
       return;
     }
+
+    resultsCountEl.textContent = expenseFilterActive
+      ? `${visible.length} result${visible.length === 1 ? "" : "s"} showing`
+      : "";
+
     if (visible.length === 0){
       list.innerHTML = `<div class="notes-empty">No expenses match your search or date range.</div>`;
       return;
@@ -4596,7 +4635,10 @@ const db = getFirestore(firebaseApp);
     updateResellerCount();
     updateResellerStatusFilterCounts();
 
+    const resultsCountEl = document.getElementById("resellerResultsCount");
+
     if (data.resellers.length === 0){
+      resultsCountEl.textContent = "";
       list.innerHTML = `<div class="empty-state">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/></svg>
         <div>No resellers yet. Tap the + button to log the first one.</div>
@@ -4605,6 +4647,10 @@ const db = getFirestore(firebaseApp);
     }
 
     const visibleResellers = getFilteredResellers();
+    const resellerFilterActive = resellerFilters.status !== "all" || !!resellerFilters.search.trim();
+    resultsCountEl.textContent = resellerFilterActive
+      ? `${visibleResellers.length} result${visibleResellers.length === 1 ? "" : "s"} showing`
+      : "";
 
     if (visibleResellers.length === 0){
       list.innerHTML = `<div class="empty-state">
