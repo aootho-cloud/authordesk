@@ -1435,20 +1435,11 @@
       color:#111;
     }
     .print-label .label-customer-id{
-      padding:4mm 6mm 3mm;
+      padding:5mm 6mm;
       border-bottom:1.5px solid #333;
       font-size:15pt;
       font-weight:800;
       letter-spacing:0.02em;
-    }
-    .print-label .label-customer-id .cid-tag{
-      font-size:8pt;
-      font-weight:700;
-      letter-spacing:0.08em;
-      text-transform:uppercase;
-      color:#777;
-      display:block;
-      margin-bottom:1mm;
     }
     .print-label .label-columns{
       display:flex;
@@ -3089,10 +3080,7 @@ const db = getFirestore(firebaseApp);
     return `
       <div class="print-label">
         ${customerId ? `
-        <div class="label-customer-id">
-          <span class="cid-tag">Customer ID</span>
-          ${escapeHtml(customerId)}
-        </div>` : ""}
+        <div class="label-customer-id">${escapeHtml(customerId)}</div>` : ""}
         <div class="label-columns">
           <div class="label-side from-side">
             <div class="label-tag">From</div>
