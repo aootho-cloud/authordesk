@@ -1435,11 +1435,14 @@
       color:#111;
     }
     .print-label .label-customer-id{
-      padding:5mm 6mm;
+      padding:4mm 6mm;
       border-bottom:1.5px solid #333;
-      font-size:15pt;
+      font-size:11pt;
+      font-weight:400;
+      line-height:1.5;
+    }
+    .print-label .label-customer-id .cid-value{
       font-weight:800;
-      letter-spacing:0.02em;
     }
     .print-label .label-columns{
       display:flex;
@@ -2058,6 +2061,12 @@ const db = getFirestore(firebaseApp);
           <div class="field-hint">Printed on shipping labels, above the From/To addresses.</div>
         </div>
 
+        <div class="field">
+          <label for="profileContractId">Contract ID</label>
+          <input type="text" id="profileContractId" placeholder="e.g. CN-2026-01128" value="${escapeHtml(data.profile.contractId || "")}">
+          <div class="field-hint">Also printed on shipping labels, below the Customer ID.</div>
+        </div>
+
         <div class="account-email-row">
           <div>
             <div class="email-label">Email</div>
@@ -2223,6 +2232,7 @@ const db = getFirestore(firebaseApp);
         data.profile.name = document.getElementById("profileName").value.trim();
         data.profile.fromAddress = document.getElementById("profileFromAddress").value.trim();
         data.profile.customerId = document.getElementById("profileCustomerId").value.trim();
+        data.profile.contractId = document.getElementById("profileContractId").value.trim();
         if (draftPhoto) data.profile.photo = draftPhoto;
         store.save(data);
         updateHeaderAvatar();
@@ -3077,10 +3087,15 @@ const db = getFirestore(firebaseApp);
     const from = (data.profile.fromAddress || "").trim();
     const to = (order.address || "").trim();
     const customerId = (data.profile.customerId || "").trim();
+    const contractId = (data.profile.contractId || "").trim();
+    const idLines = [
+      customerId ? `Customer ID: <span class="cid-value">${escapeHtml(customerId)}</span>` : "",
+      contractId ? `Contract ID: <span class="cid-value">${escapeHtml(contractId)}</span>` : ""
+    ].filter(Boolean);
     return `
       <div class="print-label">
-        ${customerId ? `
-        <div class="label-customer-id">${escapeHtml(customerId)}</div>` : ""}
+        ${idLines.length ? `
+        <div class="label-customer-id">${idLines.join("<br>")}</div>` : ""}
         <div class="label-columns">
           <div class="label-side from-side">
             <div class="label-tag">From</div>
