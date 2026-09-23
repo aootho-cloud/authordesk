@@ -1436,7 +1436,7 @@
     }
     .print-label .label-customer-id{
       padding:4mm 6mm;
-      border-bottom:1.5px solid #333;
+      border-top:1.5px solid #333;
       font-size:11pt;
       font-weight:400;
       line-height:1.5;
@@ -1454,6 +1454,13 @@
     }
     .print-label .label-side.from-side{
       border-right:1.5px solid #333;
+      display:flex;
+      flex-direction:column;
+      padding:0;
+    }
+    .print-label .from-side .from-address{
+      flex:1 1 auto;
+      padding:6mm;
     }
     .print-label .label-tag{
       font-size:8pt;
@@ -2058,7 +2065,7 @@ const db = getFirestore(firebaseApp);
         <div class="field">
           <label for="profileCustomerId">Customer ID (Postal)</label>
           <input type="text" id="profileCustomerId" placeholder="e.g. AD-2026-004821" value="${escapeHtml(data.profile.customerId || "")}">
-          <div class="field-hint">Printed on shipping labels, above the From/To addresses.</div>
+          <div class="field-hint">Printed on shipping labels, below the From address.</div>
         </div>
 
         <div class="field">
@@ -3094,12 +3101,14 @@ const db = getFirestore(firebaseApp);
     ].filter(Boolean);
     return `
       <div class="print-label">
-        ${idLines.length ? `
-        <div class="label-customer-id">${idLines.join("<br>")}</div>` : ""}
         <div class="label-columns">
           <div class="label-side from-side">
-            <div class="label-tag">From</div>
-            <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
+            <div class="from-address">
+              <div class="label-tag">From</div>
+              <div class="label-block">${from ? escapeHtml(from) : "(add your From address in My Account)"}</div>
+            </div>
+            ${idLines.length ? `
+            <div class="label-customer-id">${idLines.join("<br>")}</div>` : ""}
           </div>
           <div class="label-side to-side">
             <div class="label-tag">To</div>
